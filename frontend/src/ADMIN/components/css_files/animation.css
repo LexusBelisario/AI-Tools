@@ -1,0 +1,41 @@
+@keyframes slide-in {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0px);
+  }
+}
+.slide-in {
+  animation: slide-in 0.5s;
+}
+
+@keyframes slide-out {
+  0% {
+    transform: translateX(0px);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+.slide-out {
+  animation: slide-out 0.5s forwards;
+}
+
+@keyframes pop-in {
+  0% { opacity: 0; transform: scale(0.1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.pop-in {
+  animation:pop-in 0.3s;
+}
+
+@keyframes pop-out {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0); }
+}
+
+.pop-out {
+  animation:pop-out 0.3s forwards;
+}

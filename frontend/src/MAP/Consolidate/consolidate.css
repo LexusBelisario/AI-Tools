@@ -1,0 +1,188 @@
+/* ===========================
+   CONSOLIDATE TOOL POPUP
+=========================== */
+
+/* Popup container */
+#consolidatePopup {
+  position: fixed;
+  top: 100px;
+  right: -400px;
+  width: 320px;
+  background: white;
+  border: 1px solid #888;
+  padding: 16px;
+  z-index: 3000;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.3);
+  transition: right 0.3s ease;
+  font-family: sans-serif;
+}
+
+/* Visible state */
+#consolidatePopup.visible {
+  right: 20px;
+}
+
+/* Header */
+.consolidate-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+#consolidatePopup h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: bold;
+  color: #222;
+}
+
+/* Close button */
+.consolidate-header .close-btn {
+  background-color: #000;
+  color: white;
+  font-weight: bold;
+  font-size: 13px;
+  border: 1px solid black;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.consolidate-header .close-btn:hover {
+  background-color: #a0001c;
+}
+
+/* Collapsible Instructions Toggle */
+.toggle-instructions-btn {
+  background: none;
+  border: none;
+  color: #007bff;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  margin-bottom: 4px;
+  float: right;
+}
+
+.toggle-instructions-btn:hover {
+  color: #0056b3;
+}
+
+/* Instructions Block */
+.consolidate-instructions {
+  clear: both;
+  border-left: 3px solid #007bff;
+  background: #f9f9f9;
+  padding: 6px 10px;
+  margin-top: 6px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+}
+
+.consolidate-instructions p {
+  font-size: 12px;
+  margin: 3px 0;
+  line-height: 1.4;
+}
+
+/* Label above PIN list */
+.consolidate-selected-label {
+  font-weight: bold;
+  font-size: 13px;
+  margin-bottom: 4px;
+  margin-top: 10px;
+  color: #333;
+}
+
+/* PIN List */
+.consolidate-pin-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 20px 0;
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: #fafafa;
+}
+
+/* Each PIN entry */
+.consolidate-pin-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid #eee;
+  font-size: 13px;
+  color: #333;
+}
+
+/* Remove button */
+.remove-btn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 6px;
+  line-height: 1;
+}
+
+.remove-btn:hover {
+  color: red;
+}
+
+/* Button row */
+.consolidate-popup-buttons {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Base button style */
+.consolidate-btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 13px;
+  transition: opacity 0.2s;
+}
+
+/* Confirm button */
+.consolidate-btn.confirm {
+  background-color: #020202;
+  color: white;
+}
+
+.consolidate-btn.confirm:hover {
+  background-color: #333;
+}
+
+/* Cancel button */
+.consolidate-btn.cancel {
+  background-color: #ccc;
+  color: black;
+}
+
+.consolidate-btn.cancel:hover {
+  background-color: #b5b5b5;
+}
+
+/* Scrollbar polish */
+.consolidate-pin-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.consolidate-pin-list::-webkit-scrollbar-thumb {
+  background-color: #bbb;
+  border-radius: 3px;
+}
+
+.consolidate-pin-list::-webkit-scrollbar-thumb:hover {
+  background-color: #999;
+}

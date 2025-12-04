@@ -1,0 +1,83 @@
+.label-icon {
+  font-size: 12px;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+  color: black;
+  pointer-events: none;
+  text-align: center;
+  border-radius: 3px;
+  padding: 2px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.barangay-label {
+  z-index: 1000;
+}
+
+.barangay-label div {
+  color: #2e7d32;
+  background-color: rgba(200, 230, 201, 0.9);
+  border: 1px solid #4caf50;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 3px 6px;
+  border-radius: 4px;
+  text-shadow: 1px 1px 1px rgba(255, 255, 255, 0.9);
+}
+
+.section-label {
+  z-index: 999;
+}
+
+.section-label div {
+  color: #1565c0;
+  background-color: rgba(187, 222, 251, 0.9);
+  border: 1px solid #2196f3;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 5px;
+  border-radius: 3px;
+  text-shadow: 1px 1px 1px rgba(255, 255, 255, 0.9);
+}
+
+.parcel-label {
+  z-index: 998;
+}
+
+.parcel-label div {
+  color: #b71c1c;
+  background-color: rgba(255, 205, 210, 0.9);
+  border: 1px solid #f44336;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 4px;
+  border-radius: 3px;
+  text-shadow: 1px 1px 1px rgba(255, 255, 255, 0.9);
+}
+
+/* Hover effects for better visibility */
+.label-icon div:hover {
+  transform: scale(1.05);
+  transition: transform 0.1s ease-in-out;
+}
+
+/* Responsive font sizes for different zoom levels */
+@media (max-width: 768px) {
+  .label-icon {
+    font-size: 11px;
+  }
+  
+  .barangay-label div {
+    font-size: 12px;
+  }
+  
+  .section-label div {
+    font-size: 10px;
+  }
+  
+  .parcel-label div {
+    font-size: 9px;
+  }
+}

@@ -1,0 +1,25 @@
+/* === Legend container (matches Thematic style) === */
+.landinfo-legend-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: row; /* stack horizontally */
+  gap: 12px;
+  z-index: 10000;
+}
+
+/* === Legend box (dark gray, adaptive size) === */
+.landinfo-legend-box {
+  background: rgba(51, 51, 51, 0.95);  /* dark gray background */
+  color: white;
+  border: 1px solid #666;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: sans-serif;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  width: fit-content;  /* adapt to contents */
+  max-width: none;     /* no forced max width */
+  overflow: visible;   /* ✅ no scrollbars */
+}

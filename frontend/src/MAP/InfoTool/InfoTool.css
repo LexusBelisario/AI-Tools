@@ -1,0 +1,265 @@
+/* === CONTAINER === */
+#infoPopup {
+  position: absolute; /* Positioned relative to the nearest positioned ancestor */
+  top: 0;
+  left: 0;
+  width: 420px;
+  height: 100vh; /* Full viewport height */
+  background-color: #f2f2f2;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.3); /* Right-side shadow */
+  z-index: 2100; /* High stacking order to appear above other content */
+  display: flex;
+  flex-direction: column; /* Makes children stack vertically */
+  transition: transform 0.3s ease; /* Smooth slide-in/out animation */
+}
+
+#infoPopup.slide-right {
+  left: auto;
+  right: 0;
+  transform: translateX(100%); /* Off-screen to the right */
+}
+
+#infoPopup.visible.slide-right {
+  transform: translateX(0); /* Slide into view from right */
+}
+
+#infoPopup:not(.slide-right) {
+  transform: translateX(-100%); /* Off-screen to the left */
+}
+
+#infoPopup.visible:not(.slide-right) {
+  transform: translateX(0); /* Slide into view from left */
+}
+
+/* === HEADER === */
+.info-header {
+  display: flex;
+  justify-content: space-between; /* Space between title and buttons */
+  align-items: center;
+  padding: 16px 16px 4px;
+  gap: 10px;
+}
+
+.info-header h3 {
+  margin: 0;
+  font-weight: bold;
+  font-size: 16px;
+  flex-grow: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* Truncate long titles with ... */
+}
+
+.edit-btn,
+.close-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;               /* Slightly smaller text */
+  font-weight: bold;
+  height: 30px;                  /* Slightly shorter */
+  padding: 0 10px;               /* Less horizontal padding */
+  border: 1px solid #000;
+  border-radius: 5px;
+  background-color: #fff;
+  color: #000;
+  cursor: pointer;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+
+.edit-btn {
+  background-color: white;
+  color: black;
+}
+
+.edit-btn:hover {
+  background-color: black;
+  color: white;
+}
+
+.close-btn {
+  background-color: #fff;
+  color: black;
+}
+
+.close-btn:hover {
+  background-color: #ad1414;
+  color: white;
+}
+
+/* === TAB BAR === */
+.info-tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px;
+  margin-bottom: 8px;
+  flex-wrap: wrap; /* Allow wrap if too many tabs */
+}
+
+.info-tab {
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid #aaa;
+  background-color: white;
+  cursor: pointer;
+  font-weight: bold;
+  border-radius: 4px;
+  white-space: nowrap;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis; /* Avoid overflow by truncating text */
+}
+
+.info-tab.active {
+  background-color: #fff;
+  border-color: #000;
+  color: black;
+}
+
+.info-tab.disabled {
+  opacity: 0.4;
+  pointer-events: none; /* Prevent clicks */
+}
+
+/* === CONTENT AREA === */
+.info-content {
+  flex: 1; /* Take up all remaining vertical space */
+  overflow-y: auto; /* Scroll vertically when needed */
+  padding: 0 16px 16px;
+}
+
+h4 {
+  margin: 14px 0 6px;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+/* === GRID FIELDS === */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr); /* Two-column layout */
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+
+.info-grid label {
+  font-size: 13px;
+  font-weight: bold;
+  display: flex;
+  flex-direction: column;
+}
+
+.info-grid input {
+  font-size: 13px;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+}
+
+/* === SAVE BAR === */
+.save-bar {
+  padding: 10px 16px;
+  border-top: 1px solid #ccc;
+  background-color: #f2f2f2;
+  text-align: right;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+}
+
+.save-btn {
+  background-color: black;
+  color: white;
+  font-weight: bold;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.save-btn:hover {
+  background-color: white;
+  color: black;
+}
+
+.save-message {
+  color: green;
+  font-weight: bold;
+  font-size: 13px;
+  margin-top: 6px;
+  text-align: right;
+}
+
+/* === VALUATION TABLE === */
+.valuation-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  /* table-layout: fixed was removed to allow flexible sizing */
+}
+
+.valuation-table th,
+.valuation-table td {
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+  font-size: 13px;
+  text-align: left;
+  vertical-align: middle;
+  min-width: 100px;     /* Prevent cells from becoming too narrow */
+  white-space: nowrap;  /* Prevent line breaks in cells */
+}
+
+.valuation-table th {
+  background-color: #eee;
+  font-weight: bold;
+}
+
+.valuation-table input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+}
+
+.info-header {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  width: 100%;             /* ✅ Ensures it spans full container width */
+  box-sizing: border-box;  /* ✅ Includes padding in width */
+}
+
+.info-header h3 {
+  margin: 0;
+  font-size: 20px;          /* Increased size */
+  font-weight: 700;         /* Bold for emphasis */
+  flex-grow: 1;
+  text-align: left;         /* ✅ Forces it to stay left */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+.info-header-buttons {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;       /* ✅ Prevent buttons from wrapping */
+  flex-wrap: nowrap;         /* ✅ Absolutely prevents wrap */
+}
+
+input.readonly {
+  background-color: #f3f3f3;
+  color: #777;
+  cursor: not-allowed;
+}

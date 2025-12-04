@@ -1,0 +1,177 @@
+/* ============================================================
+   🎛️ JoinedTable Sync Panel — Push, Pull, Configure Layout
+   Clean initial screen (no text)
+   ============================================================ */
+
+.sync-panel {
+  position: absolute;
+  right: 3.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 320px;
+  background: rgba(21, 25, 34, 0.9);
+  color: white;
+  border: 1px solid #2c2f36;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  padding: 1rem;
+  font-family: "Inter", sans-serif;
+  z-index: 1100;
+}
+
+/* === Header === */
+.sync-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.sync-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #f7c800;
+}
+
+.sync-close-btn {
+  color: #9ca3af;
+  transition: color 0.2s ease;
+}
+.sync-close-btn:hover {
+  color: #ffffff;
+}
+
+/* === Placeholder View === */
+.sync-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 180px;
+}
+
+/* === Main Buttons (Push, Pull, Configure) === */
+.sync-main-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.sync-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: none;
+  border-radius: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.5rem 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* --- Button Variants --- */
+.sync-btn.push {
+  background: #f7c800;
+  color: #151922;
+}
+.sync-btn.push:hover {
+  background: #ffe760;
+}
+
+.sync-btn.pull {
+  background: #87077b;
+  color: #ffffff;
+}
+.sync-btn.pull:hover {
+  background: #60a5fa;
+}
+
+.sync-btn.configure {
+  background: #2c2f36;
+  color: #ffffff;
+}
+.sync-btn.configure:hover {
+  background: #3b3f47;
+}
+
+/* === Configuration Box === */
+.sync-box {
+  background: #1f2329;
+  border: 1px solid #2c2f36;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sync-box label {
+  color: #9ca3af;
+  font-size: 0.75rem;
+  margin-bottom: 0.15rem;
+  display: block;
+}
+
+.sync-box input {
+  width: 100%;
+  background: #2c2f36;
+  border: 1px solid #3b3f47;
+  color: white;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 0.25rem;
+  outline: none;
+  transition: border 0.2s ease;
+}
+.sync-box input:focus {
+  border-color: #f7c800;
+}
+.sync-box input[readonly] {
+  color: #bbb;
+  cursor: not-allowed;
+}
+
+/* === Action Buttons (Inside Config) === */
+.sync-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.sync-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: transparent;
+  border: 1px solid #3b3f47;
+  padding: 0.35rem 0.8rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  color: #d1d5db;
+  transition: all 0.2s ease;
+}
+.sync-back-btn:hover {
+  background: #2c2f36;
+  color: #ffffff;
+}
+
+.sync-save-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: none;
+  padding: 0.45rem 1rem;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: #f7c800;
+  color: #151922;
+  transition: all 0.2s ease;
+}
+.sync-save-btn:hover {
+  background: #ffe760;
+}

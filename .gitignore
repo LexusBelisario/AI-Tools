@@ -1,0 +1,5 @@
+# Ignore Python bytecode
+# Byte-compiled files
+*.pyc
+__pycache__/
+main.cpython-*.pyc

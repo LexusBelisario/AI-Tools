@@ -1,0 +1,416 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+
+.basemap-selector-container {
+  position: absolute;
+  bottom: 20px;
+  right: 14px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.basemap-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(21, 25, 34, 0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 10px;
+  padding: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  pointer-events: auto;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Expanded state */
+.basemap-cards-expanded {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+/* List container with animation */
+.basemap-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Individual Card - Reduced to 90px Size */
+.basemap-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  width: 90px;
+  position: relative;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+/* 🟡 YELLOW HOVER - #F7C800 */
+.basemap-card:hover {
+  transform: translateY(-2px) scale(1.02);
+  background: rgba(247, 200, 0, 0.15);
+  border-color: #f7c800;
+  box-shadow: 0 4px 14px rgba(247, 200, 0, 0.4), 0 0 18px rgba(247, 200, 0, 0.2);
+}
+
+/* Active/Main Card Styling - NO GLOW, SIMPLE BLUE BORDER */
+.basemap-card-active {
+  border-color: #1a73e8;
+  background: rgba(26, 115, 232, 0.12);
+}
+
+.basemap-card-main {
+  cursor: pointer;
+}
+
+/* 🟡 YELLOW HOVER for Active Card */
+.basemap-card-main:hover {
+  transform: translateY(-2px) scale(1.02);
+  border-color: #f7c800;
+  background: rgba(247, 200, 0, 0.2);
+  box-shadow: 0 0 0 2px rgba(247, 200, 0, 0.5),
+    0 5px 18px rgba(247, 200, 0, 0.4), 0 0 25px rgba(247, 200, 0, 0.2);
+}
+
+/* Thumbnail - Reduced Height */
+.basemap-card-thumbnail {
+  width: 100%;
+  height: 70px;
+  position: relative;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px 8px 0 0;
+}
+
+.basemap-card-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.basemap-card:hover .basemap-card-thumbnail img {
+  transform: scale(1.08);
+  filter: brightness(1.1);
+}
+
+/* Chevron icon on active card - Smaller */
+.basemap-card-chevron {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+.basemap-card-chevron svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 🟡 YELLOW HOVER for Chevron */
+.basemap-card-main:hover .basemap-card-chevron {
+  background: #f7c800;
+  box-shadow: 0 0 10px rgba(247, 200, 0, 0.6);
+}
+
+.basemap-card-main:hover .basemap-card-chevron svg {
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.5));
+}
+
+/* Label - Smaller Font */
+.basemap-card-label {
+  padding: 6px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+  background: transparent;
+  line-height: 1.2;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  letter-spacing: 0.02em;
+}
+
+.basemap-card-active .basemap-card-label {
+  color: #8ab4f8;
+  font-weight: 700;
+}
+
+/* 🟡 YELLOW HOVER for Label */
+.basemap-card:hover .basemap-card-label {
+  color: #f7c800;
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(247, 200, 0, 0.5);
+}
+
+/* ========================================
+   📱 Responsive Design
+======================================== */
+
+@media (max-width: 768px) {
+  .basemap-selector-container {
+    bottom: 14px;
+    right: 10px;
+  }
+
+  .basemap-cards {
+    gap: 6px;
+    padding: 6px;
+    border-radius: 8px;
+  }
+
+  .basemap-cards-list {
+    gap: 6px;
+  }
+
+  .basemap-card {
+    width: 75px;
+  }
+
+  .basemap-card-thumbnail {
+    height: 58px;
+  }
+
+  .basemap-card-label {
+    font-size: 9px;
+    padding: 5px 3px;
+  }
+
+  .basemap-card-chevron {
+    width: 18px;
+    height: 18px;
+  }
+
+  .basemap-card-chevron svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .basemap-selector-container {
+    bottom: 10px;
+    right: 8px;
+  }
+
+  .basemap-cards {
+    gap: 5px;
+    padding: 5px;
+  }
+
+  .basemap-cards-list {
+    gap: 5px;
+  }
+
+  .basemap-card {
+    width: 65px;
+  }
+
+  .basemap-card-thumbnail {
+    height: 50px;
+  }
+
+  .basemap-card-label {
+    font-size: 8px;
+    padding: 4px 2px;
+  }
+
+  .basemap-card-chevron {
+    width: 16px;
+    height: 16px;
+    bottom: 3px;
+    right: 3px;
+  }
+
+  .basemap-card-chevron svg {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+/* ========================================
+   ♿ Accessibility
+======================================== */
+
+.basemap-card:focus {
+  outline: 2px solid #f7c800;
+  outline-offset: 2px;
+}
+
+.basemap-card:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ========================================
+   🎨 High Contrast Mode Support
+======================================== */
+
+@media (prefers-contrast: high) {
+  .basemap-cards {
+    border: 2px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .basemap-card {
+    border-width: 3px;
+  }
+
+  .basemap-card-label {
+    color: white;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  }
+
+  .basemap-card:hover {
+    border-color: #f7c800;
+  }
+}
+
+/* ========================================
+   🎬 Reduced Motion Support
+======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .basemap-cards,
+  .basemap-card,
+  .basemap-card-thumbnail img,
+  .basemap-card-chevron svg,
+  .basemap-card-chevron {
+    transition: none;
+    animation: none;
+  }
+
+  .basemap-cards-list {
+    animation: none;
+  }
+
+  .basemap-card:hover {
+    transform: none;
+  }
+}
+
+/* ========================================
+   ✨ Extra Polish
+======================================== */
+
+/* Smooth font rendering */
+.basemap-selector-container * {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Prevent text selection on buttons */
+.basemap-card {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* orthopoto toggle */
+
+/* ========================================
+   🛰️ Orthophoto Toggle
+======================================== */
+
+.basemap-ortho-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.basemap-ortho-toggle:hover {
+  background: rgba(247, 200, 0, 0.15);
+  border-color: #f7c800;
+  box-shadow: 0 0 12px rgba(247, 200, 0, 0.3);
+}
+
+.ortho-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ortho-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #f7c800;
+}
+
+.ortho-label-text {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.basemap-ortho-toggle:hover .ortho-label-text {
+  color: #f7c800;
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(247, 200, 0, 0.5);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .basemap-ortho-toggle {
+    padding: 6px 8px;
+  }
+
+  .ortho-checkbox {
+    width: 14px;
+    height: 14px;
+  }
+
+  .ortho-label-text {
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 480px) {
+  .basemap-ortho-toggle {
+    padding: 5px 6px;
+  }
+
+  .ortho-checkbox {
+    width: 12px;
+    height: 12px;
+  }
+
+  .ortho-label-text {
+    font-size: 8px;
+  }
+}

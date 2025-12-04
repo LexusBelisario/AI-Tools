@@ -1,0 +1,226 @@
+/* === Popup Panel === */
+#subdividePopup {
+  position: fixed;
+  top: 20px;
+  right: -400px;
+  width: 340px;
+  background: #fff;
+  border: 1px solid #888;
+  padding: 16px;
+  z-index: 3000;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.3);
+  transition: right 0.3s ease;
+  font-family: sans-serif;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  overflow-x: hidden; /* ✅ Fix scrollbar */
+}
+
+#subdividePopup.visible {
+  right: 20px;
+}
+
+/* === Header === */
+.subdivide-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.subdivide-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.subdivide-close-btn {
+  background: #000;
+  color: #fff;
+  font-weight: bold;
+  font-size: 13px;
+  border: 1px solid #000;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.subdivide-close-btn:hover {
+  background-color: #800015;
+}
+
+/* === Tab Buttons === */
+.tab-buttons {
+  display: flex;
+  justify-content: space-between;
+  margin: 12px 0 10px 0;
+}
+
+.tab-buttons button {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: bold;
+  border: 1px solid #333;
+  background: #f4f4f4;
+  color: #000;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.tab-buttons button:not(:last-child) {
+  margin-right: 8px;
+}
+
+.tab-buttons button.active {
+  background-color: #000;
+  color: #fff;
+}
+
+/* === Instructions === */
+.subdivide-instructions p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+/* === Button Grid === */
+.subdivide-controls-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+  min-width: 0; /* ✅ Prevent overflow */
+}
+
+/* === General Button Style === */
+.subdivide-btn {
+  padding: 8px 14px;
+  width: 100%;
+  font-size: 13px;
+  font-weight: bold;
+  color: white;
+  background: #000;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  box-sizing: border-box;
+  text-align: center;
+  transition: background-color 0.2s ease;
+}
+
+.subdivide-btn:hover:not(:disabled) {
+  background-color: #333;
+}
+
+.subdivide-btn:disabled {
+  background-color: #999;
+  color: #fff;
+  cursor: not-allowed;
+}
+
+/* === Textarea for Coordinate Entry === */
+.subdivide-textarea {
+  width: 100%;
+  font-size: 13px;
+  padding: 6px;
+  resize: vertical;
+  min-height: 80px;
+  max-height: 160px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font-family: sans-serif;
+  margin-top: 12px;
+}
+
+/* === Manual Point List === */
+.manual-point-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 4px 8px;
+  margin-top: 4px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  word-break: break-word; /* ✅ Prevent horizontal scroll from long text */
+}
+
+/* === Remove Point Button === */
+.remove-point-btn {
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  font-weight: bold;
+  color: #555;
+  cursor: pointer;
+  padding: 0 6px;
+  line-height: 1;
+}
+
+.remove-point-btn:hover {
+  color: #c00;
+}
+
+/* === Side-by-side Button Row === */
+.subdivide-btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.subdivide-btn-row .subdivide-btn,
+.subdivide-btn-row .file-upload-btn {
+  flex: 1;
+  text-align: center;
+}
+
+/* === File Upload Button === */
+.file-upload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: bold;
+  border: none;
+  border-radius: 4px;
+  background-color: #000;
+  color: #fff;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.file-upload-btn:hover:not(.disabled) {
+  background-color: #333;
+}
+
+.file-upload-btn.disabled {
+  background-color: #999;
+  cursor: not-allowed;
+  pointer-events: none;
+  color: #fff;
+}
+
+.file-upload-btn input[type="file"] {
+  display: none;
+}
+
+/* === Export Options === */
+.subdivide-btn-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.export-btn-wrapper {
+  position: relative;
+}
+
+.export-options {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}

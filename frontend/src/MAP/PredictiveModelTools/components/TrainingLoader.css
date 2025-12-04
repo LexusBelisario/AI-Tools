@@ -1,0 +1,64 @@
+.training-loader-overlay {
+  position: absolute; /* Changed from fixed */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  border-radius: 12px; /* Match modal border radius */
+}
+
+
+.training-loader-container {
+  text-align: center;
+  padding: 40px;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-radius: 16px;
+  border: 2px solid #f59e0b;
+  box-shadow: 0 20px 60px rgba(245, 158, 11, 0.3);
+  max-width: 400px;
+}
+.training-spinner {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 20px;
+  border: 4px solid rgba(245, 158, 11, 0.2);
+  border-top: 4px solid #f59e0b;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.training-message {
+  font-size: 20px;
+  font-weight: 600;
+  color: #fbbf24;
+  margin-bottom: 12px;
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  min-height: 30px;
+}
+
+.training-dots {
+  display: inline-block;
+  width: 20px;
+  text-align: left;
+}
+
+.training-subtext {
+  font-size: 14px;
+  color: #94a3b8;
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+}

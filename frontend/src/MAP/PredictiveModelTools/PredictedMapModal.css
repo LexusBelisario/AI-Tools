@@ -1,0 +1,207 @@
+/* === Dark background overlay === */
+.predictmap-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+/* === Floating modal box === */
+.predictmap-box {
+  background: #1b1f26;
+  color: white;
+  border-radius: 12px;
+  width: 900px;
+  max-width: 95vw;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  box-shadow: 0 0 40px rgba(0, 255, 157, 0.4);
+  overflow: hidden;
+  animation: fadeIn 0.25s ease-out;
+  border: 1px solid rgba(0, 255, 157, 0.2);
+}
+
+/* === Fade animation === */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* === Header === */
+.predictmap-title {
+  color: #00ff9d;
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+  padding: 12px 40px 10px;
+  border-bottom: 1px solid rgba(0, 255, 157, 0.2);
+  background: rgba(0, 255, 157, 0.05);
+}
+
+/* === Close button === */
+.predictmap-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: #ff4d4d;
+  border: none;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 16px;
+  font-weight: 600;
+  transition: all 0.2s;
+  z-index: 10;
+}
+.predictmap-close:hover {
+  background: #ff6666;
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(255, 77, 77, 0.4);
+}
+
+/* === Map section === */
+.predictmap-map {
+  flex: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 10px 12px 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.predictmap-box .leaflet-container {
+  height: 100% !important;
+  width: 100% !important;
+  background: #0a0e14;
+}
+
+/* === Custom tooltip styling === */
+.custom-tooltip {
+  background: rgba(27, 31, 38, 0.95) !important;
+  border: 1px solid #00ff9d !important;
+  border-radius: 6px !important;
+  padding: 8px 10px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
+}
+
+.custom-tooltip::before {
+  border-top-color: #00ff9d !important;
+}
+
+/* === Legend area === */
+.predictmap-legend {
+  background: #0f1216;
+  border-top: 2px solid rgba(0, 255, 157, 0.3);
+  padding: 12px 14px;
+  max-height: 25vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legend-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.predictmap-legend h4 {
+  color: #00ff9d;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.legend-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: #a0a0a0;
+}
+
+.legend-stats span {
+  font-family: monospace;
+}
+
+.legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.legend-color {
+  width: 28px;
+  height: 14px;
+  margin-right: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.legend-label {
+  font-family: monospace;
+  font-size: 11px;
+  color: #e0e0e0;
+}
+
+/* === Loading spinner === */
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 16px;
+  border: 4px solid rgba(0, 255, 157, 0.1);
+  border-top-color: #00ff9d;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* === Scrollbar styling === */
+.predictmap-legend::-webkit-scrollbar {
+  width: 6px;
+}
+
+.predictmap-legend::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.predictmap-legend::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 157, 0.4);
+  border-radius: 3px;
+}
+
+.predictmap-legend::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 157, 0.6);
+}
