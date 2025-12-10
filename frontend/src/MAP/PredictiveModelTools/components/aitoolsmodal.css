@@ -1,44 +1,21 @@
-/* ============================================================
-   ROOT & PANEL WRAPPER
-   ============================================================ */
-
 .blgf-ai-root {
   position: fixed;
   top: 0;
   right: 0;
-  width: 50%; /* 👉 Your requested 50% width */
+  width: 100%;
   height: 100%;
-  background: #0f172a; /* dark navy */
+  background: #0f172a;
   z-index: 9999;
   box-shadow: -4px 0 10px rgba(0, 0, 0, 0.4);
   overflow-y: auto;
   font-family: "Jakarta Sans", sans-serif !important;
-  animation: slideIn 0.28s ease-out;
 }
-
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-/* ============================================================
-   PANEL CONTENT
-   ============================================================ */
 
 .blgf-ai-panel {
-  padding: 20px 28px;
+  padding: 32px 48px;
   color: white;
 }
 
-/* ============================================================
-   HEADER
-   ============================================================ */
 
 .blgf-ai-header {
   display: flex;
@@ -50,7 +27,7 @@
 .blgf-ai-title {
   font-size: 26px;
   font-weight: 700;
-  color: #f7c800; /* BLGF gold */
+  color: #f7c800;
 }
 
 .blgf-ai-subtitle {
@@ -70,10 +47,6 @@
 .blgf-ai-close:hover {
   color: white;
 }
-
-/* ============================================================
-   MAIN TABS (Inputs | Results)
-   ============================================================ */
 
 .blgf-ai-tabs {
   display: flex;
@@ -819,25 +792,6 @@
   background: #475569;
 }
 
-/* ============================================================
-   RESPONSIVE ADJUSTMENTS
-   ============================================================ */
-
-@media (max-width: 1024px) {
-  .blgf-ai-root {
-    width: 60%;
-  }
-}
-
-@media (max-width: 768px) {
-  .blgf-ai-root {
-    width: 100%;
-  }
-
-  .blgf-ai-mode-selector {
-    flex-direction: column;
-  }
-}
 
 /* ============================================================
    TRAINING BUTTON LOADING STATE

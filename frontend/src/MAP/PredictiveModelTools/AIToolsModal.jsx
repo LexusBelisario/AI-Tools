@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Plot from "react-plotly.js";
 import API from "../../api.js";
-import { useSchema } from "../SchemaContext.jsx";
 import TrainingLoader from "./components/trainingLoader.jsx";
 import MapLoader from "./components/MapLoader.jsx";
 import SaveToDBModal from "./SaveToDBModal.jsx";
@@ -19,13 +18,18 @@ import {
   FONT_FAMILY,
 } from "./components/plotStyles.js";
 import RunSavedTabUI from "./RunSavedTabUI.jsx";
-export default function AIToolsModal({ isOpen, onClose, onShowMap }) {
+export default function AIToolsModal({
+  isOpen,
+  onClose,
+  onShowMap,
+  schema: externalSchema = null,
+}) {
   if (!isOpen) return null;
 
   const [inputMode, setInputMode] = useState("file");
   const [availableTables, setAvailableTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState("");
-  const { schema: userSchema } = useSchema();
+  const userSchema = externalSchema;
   const [files, setFiles] = useState([]);
   const [fields, setFields] = useState([]);
   const [dependentVar, setDependentVar] = useState("");
@@ -74,7 +78,7 @@ export default function AIToolsModal({ isOpen, onClose, onShowMap }) {
   };
 
   // Tabs: inputs | results
-  const [activeTab, setActiveTab] = useState("Train");
+  const [activeTab, setActiveTab] = useState("inputs");
 
   // Selected models
   const [modelChecks, setModelChecks] = useState({
@@ -93,10 +97,7 @@ export default function AIToolsModal({ isOpen, onClose, onShowMap }) {
   const [loadingMap, setLoadingMap] = useState(false);
   const [loadingFieldName, setLoadingFieldName] = useState("");
   const loadAvailableTables = async () => {
-    if (!userSchema) {
-      console.warn("⚠️ No schema selected");
-      return;
-    }
+    if (!userSchema) return;
 
     try {
       console.log(`📊 Loading training tables from schema: ${userSchema}`);
