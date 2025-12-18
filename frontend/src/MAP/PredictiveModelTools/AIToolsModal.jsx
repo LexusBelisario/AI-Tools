@@ -18,6 +18,7 @@ import {
   FONT_FAMILY,
 } from "./components/plotStyles.js";
 import RunSavedTabUI from "./RunSavedTabUI.jsx";
+
 export default function AIToolsModal({
   isOpen,
   onClose,
@@ -26,11 +27,9 @@ export default function AIToolsModal({
 }) {
   if (!isOpen) return null;
 
-  const [inputMode, setInputMode] = useState("file");
   const [availableTables, setAvailableTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState("");
   const userSchema = externalSchema;
-  const [files, setFiles] = useState([]);
   const [fields, setFields] = useState([]);
   const [dependentVar, setDependentVar] = useState("");
   const [independentVars, setIndependentVars] = useState([]);
@@ -42,7 +41,6 @@ export default function AIToolsModal({
   const [saveConfig, setSaveConfig] = useState(null);
   const PAGE_SIZE = 100;
 
-  // 🆕 Load preview from database
   const loadDatabasePreview = async (page) => {
     if (!selectedTable || !userSchema) return;
 
@@ -62,7 +60,6 @@ export default function AIToolsModal({
 
       if (!res.ok) {
         const errorText = await res.text();
-        console.error("❌ Response error:", errorText);
         alert(`Server error: ${res.status} - ${errorText}`);
         return;
       }
@@ -72,15 +69,12 @@ export default function AIToolsModal({
       setPreviewRows(data.rows || []);
       setPreviewTotal(data.total || 0);
     } catch (err) {
-      console.error("❌ Preview error:", err);
       alert("Preview failed: " + err.message);
     }
   };
 
-  // Tabs: inputs | results
   const [activeTab, setActiveTab] = useState("inputs");
 
-  // Selected models
   const [modelChecks, setModelChecks] = useState({
     lr: false,
     rf: false,
@@ -96,12 +90,11 @@ export default function AIToolsModal({
   const [training, setTraining] = useState(false);
   const [loadingMap, setLoadingMap] = useState(false);
   const [loadingFieldName, setLoadingFieldName] = useState("");
+
   const loadAvailableTables = async () => {
     if (!userSchema) return;
 
     try {
-      console.log(`📊 Loading training tables from schema: ${userSchema}`);
-
       const fd = new FormData();
       fd.append("schema", userSchema);
 
@@ -112,13 +105,11 @@ export default function AIToolsModal({
 
       if (!res.ok) {
         const errorText = await res.text();
-        console.error("❌ Failed to load tables:", errorText);
         alert(`Failed to load tables: ${res.status}`);
         return;
       }
 
       const data = await res.json();
-      console.log("✅ Available tables:", data);
 
       if (data.tables && data.tables.length > 0) {
         setAvailableTables(data.tables);
@@ -127,7 +118,6 @@ export default function AIToolsModal({
         alert("No Training_Table found in this schema.");
       }
     } catch (err) {
-      console.error("❌ Error loading tables:", err);
       alert(`Failed to load tables: ${err.message}`);
     }
   };
@@ -138,8 +128,6 @@ export default function AIToolsModal({
     if (!selectedTable || !userSchema) return;
 
     try {
-      console.log(`📊 Loading fields from ${userSchema}.${selectedTable}`);
-
       const fd = new FormData();
       fd.append("schema", userSchema);
       fd.append("table_name", selectedTable);
@@ -151,13 +139,11 @@ export default function AIToolsModal({
 
       if (!res.ok) {
         const errorText = await res.text();
-        console.error("❌ Response error:", errorText);
         alert(`Server error: ${res.status} - ${errorText}`);
         return;
       }
 
       const data = await res.json();
-      console.log("✅ Fields loaded:", data);
 
       if (data.fields) {
         setFields(data.fields);
@@ -165,110 +151,7 @@ export default function AIToolsModal({
         alert("No fields found in the table.");
       }
     } catch (err) {
-      console.error("❌ Error loading fields:", err);
       alert(`Failed to load fields: ${err.message}`);
-    }
-  };
-
-  const loadFilePreview = async (page) => {
-    try {
-      setPreviewPage(page);
-      if (!files.length) return;
-
-      const fd = new FormData();
-      const hasZip = files.some((f) => f.name.toLowerCase().endsWith(".zip"));
-
-      if (hasZip) {
-        fd.append(
-          "zip_file",
-          files.find((f) => f.name.toLowerCase().endsWith(".zip"))
-        );
-      } else {
-        files.forEach((f) => fd.append("shapefiles", f));
-      }
-
-      fd.append("limit", PAGE_SIZE);
-      fd.append("offset", (page - 1) * PAGE_SIZE);
-
-      const res = await fetch(`${API}/ai-tools/preview`, {
-        method: "POST",
-        body: fd,
-      });
-
-      const data = await res.json();
-      setPreviewRows(data.rows || []);
-      setPreviewTotal(data.total || 0);
-    } catch (err) {
-      console.error(err);
-      alert("Preview failed.");
-    }
-  };
-
-  const handleFileChange = async (e) => {
-    const selected = Array.from(e.target.files || []);
-    if (!selected.length) return;
-
-    console.log(
-      "📁 Files selected:",
-      selected.map((f) => f.name)
-    );
-
-    setFiles(selected);
-    setFields([]);
-    setDependentVar("");
-    setIndependentVars([]);
-    setPreviewRows([]);
-    setPreviewTotal(0);
-
-    try {
-      const fd = new FormData();
-      const hasZip = selected.some((f) =>
-        f.name.toLowerCase().endsWith(".zip")
-      );
-
-      console.log("📦 Has ZIP:", hasZip);
-
-      let url = `${API}/ai-tools/fields`;
-
-      if (hasZip) {
-        const zipFile = selected.find((f) =>
-          f.name.toLowerCase().endsWith(".zip")
-        );
-        fd.append("zip_file", zipFile);
-        url = `${API}/ai-tools/fields-zip`;
-        console.log("🎯 Using ZIP endpoint:", url);
-      } else {
-        selected.forEach((f) => fd.append("shapefiles", f));
-        console.log("🎯 Using shapefiles endpoint:", url);
-      }
-
-      console.log("🌐 Making request to:", url);
-
-      const res = await fetch(url, { method: "POST", body: fd });
-
-      console.log("📡 Response status:", res.status);
-      console.log("📡 Response ok:", res.ok);
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error("❌ Response error:", errorText);
-        alert(`Server error: ${res.status} - ${errorText}`);
-        return;
-      }
-
-      const data = await res.json();
-      console.log("✅ Response data:", data);
-
-      if (data.fields) {
-        console.log("📋 Fields found:", data.fields);
-        setFields(data.fields);
-      } else {
-        console.warn("⚠️ No fields in response");
-        alert("No fields found in the uploaded file.");
-      }
-    } catch (err) {
-      console.error("❌ Error in handleFileChange:", err);
-      alert(`Failed to read shapefile: ${err.message}`);
     }
   };
 
@@ -277,6 +160,7 @@ export default function AIToolsModal({
       prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
     );
   };
+
   const handleTrain = async () => {
     const selected = Object.keys(modelChecks).filter((m) => modelChecks[m]);
     if (!selected.length) return alert("Select at least one model.");
@@ -287,30 +171,15 @@ export default function AIToolsModal({
     setTraining(true);
     setActiveTab("results");
 
-    // Prepare base FormData
     const fdBase = new FormData();
 
-    // 🆕 ADD MODE-SPECIFIC DATA
-    if (inputMode === "database") {
-      if (!userSchema || !selectedTable) {
-        alert("Please select a training table first.");
-        setTraining(false);
-        return;
-      }
-      fdBase.append("schema", userSchema);
-      fdBase.append("table_name", selectedTable);
-    } else {
-      // File mode
-      const hasZip = files.some((f) => f.name.toLowerCase().endsWith(".zip"));
-      if (hasZip) {
-        fdBase.append(
-          "zip_file",
-          files.find((f) => f.name.toLowerCase().endsWith(".zip"))
-        );
-      } else {
-        files.forEach((f) => fdBase.append("shapefiles", f));
-      }
+    if (!userSchema || !selectedTable) {
+      alert("Please select a training table first.");
+      setTraining(false);
+      return;
     }
+    fdBase.append("schema", userSchema);
+    fdBase.append("table_name", selectedTable);
 
     fdBase.append("dependent_var", dependentVar);
     fdBase.append("independent_vars", JSON.stringify(independentVars));
@@ -318,7 +187,6 @@ export default function AIToolsModal({
 
     const newResults = { lr: null, rf: null, xgb: null };
 
-    // Train each model in parallel
     const calls = selected.map(async (m) => {
       const fd = new FormData();
       for (const [key, val] of fdBase.entries()) fd.append(key, val);
@@ -346,70 +214,53 @@ export default function AIToolsModal({
 
     setTraining(false);
   };
+
   useEffect(() => {
-    if (inputMode === "database" && userSchema) {
+    if (userSchema) {
       loadAvailableTables();
-    }
-  }, [inputMode, userSchema]);
-
-  // Load fields when table is selected
-  useEffect(() => {
-    if (selectedTable && inputMode === "database") {
-      loadTableFields();
-    }
-  }, [selectedTable, inputMode]);
-
-  useEffect(() => {
-    if (inputMode === "database") {
-      setSelectedTable("");
-      setFields([]);
-      setPreviewRows([]);
-      setPreviewTotal(0);
-      setDependentVar("");
-      setIndependentVars([]);
     }
   }, [userSchema]);
 
   useEffect(() => {
-    // Only load if we have variables selected
+    if (selectedTable) {
+      loadTableFields();
+    }
+  }, [selectedTable]);
+
+  useEffect(() => {
+    setSelectedTable("");
+    setFields([]);
+    setPreviewRows([]);
+    setPreviewTotal(0);
+    setDependentVar("");
+    setIndependentVars([]);
+  }, [userSchema]);
+
+  useEffect(() => {
     if (!dependentVar && independentVars.length === 0) {
-      // Clear preview if no variables selected
       setPreviewRows([]);
       setPreviewTotal(0);
       return;
     }
 
-    // Load preview based on mode
-    if (inputMode === "database" && selectedTable) {
+    if (selectedTable) {
       loadDatabasePreview(1);
-    } else if (inputMode === "file" && files.length > 0) {
-      loadFilePreview(1);
     }
   }, [dependentVar, JSON.stringify(independentVars)]);
 
   return (
     <div className="blgf-ai-root">
-      <MapLoader isLoading={loadingMap} fieldName={loadingFieldName} />{" "}
-      <div className="blgf-ai-panel" style={{ position: "relative" }}>
-        {/* 🆕 ILAGAY DITO - Inside the panel */}
+      <MapLoader isLoading={loadingMap} fieldName={loadingFieldName} />
+      <div className="blgf-ai-panel">
         <TrainingLoader isTraining={training} />
 
-        {/* HEADER */}
         <div className="blgf-ai-header">
           <div>
             <div className="blgf-ai-title">AI Tools</div>
             <div className="blgf-ai-subtitle">
               Train models and explore outputs
               {userSchema && (
-                <span
-                  style={{
-                    marginLeft: "10px",
-                    color: "#3b82f6",
-                    fontWeight: "600",
-                  }}
-                >
-                  📍 {userSchema}
-                </span>
+                <span className="blgf-ai-schema-tag">{userSchema}</span>
               )}
             </div>
           </div>
@@ -419,7 +270,6 @@ export default function AIToolsModal({
           </button>
         </div>
 
-        {/* MAIN TABS */}
         <div className="blgf-ai-tabs">
           <div
             className={`blgf-ai-tab ${activeTab === "inputs" ? "active" : ""}`}
@@ -435,16 +285,10 @@ export default function AIToolsModal({
                 setActiveTab("results");
               }
             }}
-            title={!hasResults ? "Train a model first to view results" : ""}
-            style={{
-              cursor: !hasResults ? "not-allowed" : "pointer",
-              opacity: !hasResults ? 0.5 : 1,
-            }}
           >
             Results
           </div>
 
-          {/* ✅ ADD THIS */}
           <div
             className={`blgf-ai-tab ${activeTab === "run-saved" ? "active" : ""}`}
             onClick={() => setActiveTab("run-saved")}
@@ -455,7 +299,6 @@ export default function AIToolsModal({
 
         {activeTab === "inputs" && (
           <InputsTabUI
-            files={files}
             fields={fields}
             dependentVar={dependentVar}
             independentVars={independentVars}
@@ -469,13 +312,9 @@ export default function AIToolsModal({
             setModelChecks={setModelChecks}
             toggleExcludedRow={toggleExcludedRow}
             excludedIndices={excludedIndices}
-            handleFileChange={handleFileChange}
             handleTrain={handleTrain}
-            loadFilePreview={loadFilePreview}
             training={training}
-            inputMode={inputMode}
-            setInputMode={setInputMode}
-            userSchema={userSchema} // Pass from context
+            userSchema={userSchema}
             availableTables={availableTables}
             selectedTable={selectedTable}
             setSelectedTable={setSelectedTable}
@@ -491,9 +330,9 @@ export default function AIToolsModal({
             onShowMap={onShowMap}
             setLoadingMap={setLoadingMap}
             setLoadingFieldName={setLoadingFieldName}
-            setSaveModalOpen={setSaveModalOpen} // ✅ Add
-            setSaveConfig={setSaveConfig} // ✅ Add
-            userSchema={userSchema} // ✅ Add
+            setSaveModalOpen={setSaveModalOpen}
+            setSaveConfig={setSaveConfig}
+            userSchema={userSchema}
           />
         )}
         {activeTab === "run-saved" && (
@@ -519,6 +358,7 @@ export default function AIToolsModal({
     </div>
   );
 }
+
 function AttributePreviewTable({
   previewRows,
   previewPage,
@@ -559,20 +399,16 @@ function AttributePreviewTable({
 
   if (displayColumns.length === 0) {
     return (
-      <div className="blgf-ai-table-wrap">
-        <div style={{ padding: "20px", textAlign: "center", color: "#64748b" }}>
-          Select dependent and independent variables to preview data
-        </div>
+      <div className="blgf-ai-table-wrap empty">
+        <div>Select dependent and independent variables to preview data</div>
       </div>
     );
   }
 
   if (previewRows.length === 0 || sortedRows.length === 0) {
     return (
-      <div className="blgf-ai-table-wrap">
-        <div style={{ padding: "20px", textAlign: "center", color: "#64748b" }}>
-          No preview data available
-        </div>
+      <div className="blgf-ai-table-wrap empty">
+        <div>No preview data available</div>
       </div>
     );
   }
@@ -633,7 +469,6 @@ function AttributePreviewTable({
 }
 
 function InputsTabUI({
-  files,
   fields,
   dependentVar,
   independentVars,
@@ -647,217 +482,157 @@ function InputsTabUI({
   setModelChecks,
   excludedIndices,
   toggleExcludedRow,
-  handleFileChange,
   handleTrain,
-  loadFilePreview,
   training,
-  inputMode,
-  setInputMode,
-  userSchema, // 🆕 From context
-  availableTables, // 🆕 List of tables
-  selectedTable, // 🆕 Selected table
-  setSelectedTable, // 🆕 Setter
+  userSchema,
+  availableTables,
+  selectedTable,
+  setSelectedTable,
   loadDatabasePreview,
 }) {
   return (
     <div className="blgf-ai-content">
-      {/* ==================== MODE SELECTOR ==================== */}
       <div className="blgf-ai-block">
-        <div className="blgf-ai-label">📂 Data Input Mode</div>
-
-        <div className="blgf-ai-mode-radio-group">
-          <label
-            className={`blgf-ai-mode-radio-label ${inputMode === "file" ? "active" : ""}`}
+        <div className="blgf-ai-label">Select Models</div>
+        <div className="blgf-ai-models-grid">
+          <div
+            className={`blgf-ai-model-card ${modelChecks.lr ? "active" : ""}`}
+            onClick={() => setModelChecks((p) => ({ ...p, lr: !p.lr }))}
           >
-            <input
-              type="radio"
-              value="file"
-              checked={inputMode === "file"}
-              onChange={(e) => setInputMode(e.target.value)}
-            />
-            <span className="blgf-ai-mode-radio-text">
-              📄 Upload File (Shapefile/ZIP)
-            </span>
-          </label>
+            <div className="blgf-ai-model-card-header">
+              <span className="blgf-ai-model-name">Linear Regression</span>
+              <div className="blgf-ai-checkbox-indicator">
+                {modelChecks.lr && "✓"}
+              </div>
+            </div>
+            <div className="blgf-ai-model-desc">
+              Base statistical model for continuous target prediction.
+            </div>
+          </div>
 
-          <label
-            className={`blgf-ai-mode-radio-label ${inputMode === "database" ? "active" : ""}`}
+          <div
+            className={`blgf-ai-model-card ${modelChecks.rf ? "active" : ""}`}
+            onClick={() => setModelChecks((p) => ({ ...p, rf: !p.rf }))}
           >
-            <input
-              type="radio"
-              value="database"
-              checked={inputMode === "database"}
-              onChange={(e) => setInputMode(e.target.value)}
-            />
-            <span className="blgf-ai-mode-radio-text">
-              🗄️ Database (Training Table)
-            </span>
-          </label>
+            <div className="blgf-ai-model-card-header">
+              <span className="blgf-ai-model-name">Random Forest</span>
+              <div className="blgf-ai-checkbox-indicator">
+                {modelChecks.rf && "✓"}
+              </div>
+            </div>
+            <div className="blgf-ai-model-desc">
+              Ensemble learning method using multiple decision trees.
+            </div>
+          </div>
+
+          <div
+            className={`blgf-ai-model-card ${modelChecks.xgb ? "active" : ""}`}
+            onClick={() => setModelChecks((p) => ({ ...p, xgb: !p.xgb }))}
+          >
+            <div className="blgf-ai-model-card-header">
+              <span className="blgf-ai-model-name">XGBoost</span>
+              <div className="blgf-ai-checkbox-indicator">
+                {modelChecks.xgb && "✓"}
+              </div>
+            </div>
+            <div className="blgf-ai-model-desc">
+              Gradient boosting framework for high performance.
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ==================== 🆕 DATABASE MODE - TABLE DROPDOWN ==================== */}
-      {inputMode === "database" && (
-        <div className="blgf-ai-block">
-          {/* Show current schema */}
-          <div className="blgf-ai-info-box schema">
-            📍 <strong>Current Schema:</strong> {userSchema || "Not selected"}
-          </div>
-
-          {/* Table selector dropdown */}
-          <div style={{ marginBottom: "15px" }}>
-            <div className="blgf-ai-label">Select Training Table</div>
+      <div className="blgf-ai-data-grid">
+        <div className="blgf-ai-col-left">
+          <div className="blgf-ai-block">
+            <div className="blgf-ai-label">Training Table</div>
             <select
               value={selectedTable}
               onChange={(e) => setSelectedTable(e.target.value)}
               className="blgf-ai-select"
               disabled={availableTables.length === 0}
             >
-              <option value="">-- Select a table --</option>
+              <option value="">Select a table</option>
               {availableTables.map((table) => (
                 <option key={table} value={table}>
                   {table}
                 </option>
               ))}
             </select>
+            {availableTables.length === 0 && (
+              <div className="blgf-ai-helper-text error">
+                No tables found in schema {userSchema}
+              </div>
+            )}
           </div>
 
-          {/* No tables warning */}
-          {availableTables.length === 0 && (
-            <div className="blgf-ai-info-box warning">
-              ⚠️ No Training_Table found in schema <strong>{userSchema}</strong>
-            </div>
-          )}
-
-          {/* Selected table confirmation */}
-          {selectedTable && (
-            <div className="blgf-ai-info-box success">
-              ✅ Using table: <strong>{selectedTable}</strong>
-            </div>
-          )}
-        </div>
-      )}
-      {/* ==================== FILE UPLOAD MODE ==================== */}
-      {inputMode === "file" && (
-        <div className="blgf-ai-block">
-          <div className="blgf-ai-label">Upload Shapefile or ZIP</div>
-          <input
-            type="file"
-            multiple
-            accept=".zip,.shp,.dbf,.shx,.prj"
-            onChange={handleFileChange}
-            className="blgf-ai-input-file"
-          />
-
-          <div className="blgf-ai-filelist">
-            {files.map((f, i) => (
-              <span key={i}>{f.name}</span>
-            ))}
+          <div className="blgf-ai-block">
+            <div className="blgf-ai-label">Dependent Variable (Target)</div>
+            <select
+              value={dependentVar}
+              onChange={(e) => setDependentVar(e.target.value)}
+              className="blgf-ai-select"
+              disabled={!fields.length}
+            >
+              <option value="">Select target</option>
+              {fields.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-      )}
 
-      {/* ----------------------- DEPENDENT VARIABLE ----------------------- */}
-      <div className="blgf-ai-block">
-        <div className="blgf-ai-label">Dependent Variable</div>
-        <select
-          value={dependentVar}
-          onChange={(e) => setDependentVar(e.target.value)}
-          className="blgf-ai-select"
-        >
-          <option value="">-- Select --</option>
-          {fields.map((f) => (
-            <option key={f} value={f}>
-              {f}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* -------------------- INDEPENDENT VARIABLES -------------------- */}
-      <div className="blgf-ai-block">
-        <div className="blgf-ai-label">Independent Variables</div>
-
-        <div className="blgf-ai-list">
-          {fields.map((f) => (
-            <label key={f} className="blgf-ai-checkbox">
-              <input
-                type="checkbox"
-                checked={independentVars.includes(f)}
-                onChange={() =>
-                  setIndependentVars((p) =>
-                    p.includes(f) ? p.filter((x) => x !== f) : [...p, f]
-                  )
-                }
-              />
-              {f}
-            </label>
-          ))}
+        <div className="blgf-ai-col-right">
+          <div className="blgf-ai-block full-height">
+            <div className="blgf-ai-label">
+              Independent Variables (Features)
+            </div>
+            <div className="blgf-ai-list">
+              {fields.length === 0 && (
+                <div className="blgf-ai-empty-list">
+                  Select a table to load fields
+                </div>
+              )}
+              {fields.map((f) => (
+                <label key={f} className="blgf-ai-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={independentVars.includes(f)}
+                    onChange={() =>
+                      setIndependentVars((p) =>
+                        p.includes(f) ? p.filter((x) => x !== f) : [...p, f]
+                      )
+                    }
+                  />
+                  <span>{f}</span>
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ------------------------------ MODEL CHECKBOXES ------------------------------ */}
-      <div className="blgf-ai-block">
-        <div className="blgf-ai-label">Models to Train</div>
-
-        <div className="blgf-ai-models">
-          <label
-            className={`blgf-ai-model-checkbox-label ${modelChecks.lr ? "checked" : ""}`}
-          >
-            <input
-              type="checkbox"
-              checked={modelChecks.lr}
-              onChange={() => setModelChecks((p) => ({ ...p, lr: !p.lr }))}
-            />
-            <span className="blgf-ai-model-checkbox-text">
-              Linear Regression
-            </span>
-          </label>
-
-          <label
-            className={`blgf-ai-model-checkbox-label ${modelChecks.rf ? "checked" : ""}`}
-          >
-            <input
-              type="checkbox"
-              checked={modelChecks.rf}
-              onChange={() => setModelChecks((p) => ({ ...p, rf: !p.rf }))}
-            />
-            <span className="blgf-ai-model-checkbox-text">Random Forest</span>
-          </label>
-
-          <label
-            className={`blgf-ai-model-checkbox-label ${modelChecks.xgb ? "checked" : ""}`}
-          >
-            <input
-              type="checkbox"
-              checked={modelChecks.xgb}
-              onChange={() => setModelChecks((p) => ({ ...p, xgb: !p.xgb }))}
-            />
-            <span className="blgf-ai-model-checkbox-text">XGBoost</span>
-          </label>
-        </div>
-      </div>
-
-      {/* ---------------------------- ATTRIBUTE TABLE ---------------------------- */}
       <div className="blgf-ai-block">
         <div className="blgf-ai-preview-header">
-          <div className="blgf-ai-subtitle2">Attribute Preview</div>
+          <div className="blgf-ai-label">Data Preview</div>
           <div className="blgf-ai-preview-actions">
             <button
-              className="blgf-ai-btn-secondary"
+              className="blgf-ai-btn-text"
               onClick={() => setExcludedIndices([])}
             >
-              ✓ Select All
+              Select All
             </button>
             <button
-              className="blgf-ai-btn-secondary"
+              className="blgf-ai-btn-text"
               onClick={() =>
                 setExcludedIndices(
                   Array.from({ length: previewTotal }, (_, i) => i)
                 )
               }
             >
-              ✗ Deselect All
+              Deselect All
             </button>
           </div>
         </div>
@@ -872,20 +647,16 @@ function InputsTabUI({
           toggleExcludedRow={toggleExcludedRow}
         />
 
-        {/* Pagination */}
         <div className="blgf-ai-pagination">
           <button
             onClick={() => {
               if (previewPage > 1) {
-                if (inputMode === "database") {
-                  loadDatabasePreview(previewPage - 1);
-                } else {
-                  loadFilePreview(previewPage - 1);
-                }
+                loadDatabasePreview(previewPage - 1);
               }
             }}
+            disabled={previewPage <= 1}
           >
-            Prev
+            Previous
           </button>
 
           <span>
@@ -895,32 +666,29 @@ function InputsTabUI({
           <button
             onClick={() => {
               if (previewPage * PAGE_SIZE < previewTotal) {
-                if (inputMode === "database") {
-                  loadDatabasePreview(previewPage + 1);
-                } else {
-                  loadFilePreview(previewPage + 1);
-                }
+                loadDatabasePreview(previewPage + 1);
               }
             }}
+            disabled={previewPage * PAGE_SIZE >= previewTotal}
           >
             Next
           </button>
         </div>
       </div>
 
-      {/* ------------------------------ TRAIN BUTTON ------------------------------ */}
-      <div className="blgf-ai-btnrow">
+      <div className="blgf-ai-footer">
         <button
           className="blgf-ai-btn-primary"
           disabled={training}
           onClick={handleTrain}
         >
-          {training ? "Training…" : "Train Models"}
+          {training ? "Training in Progress..." : "Train Selected Models"}
         </button>
       </div>
     </div>
   );
 }
+
 function ResultsTabUI({
   results,
   activeModelTab,
@@ -928,8 +696,8 @@ function ResultsTabUI({
   onShowMap,
   setLoadingMap,
   setLoadingFieldName,
-  setSaveModalOpen, // ✅ Add
-  setSaveConfig, // ✅ Add
+  setSaveModalOpen,
+  setSaveConfig,
   userSchema,
 }) {
   const hasLR = !!results.lr;
@@ -938,7 +706,6 @@ function ResultsTabUI({
 
   return (
     <div className="blgf-ai-content">
-      {/* ---------------- MODEL SELECTION TABS ---------------- */}
       <div className="blgf-ai-modeltabs">
         {hasLR && (
           <div
@@ -968,14 +735,12 @@ function ResultsTabUI({
         )}
       </div>
 
-      {/* ---------------- EMPTY STATE ---------------- */}
       {!activeModelTab && (
-        <div style={{ color: "#94a3b8", padding: "20px" }}>
+        <div className="blgf-ai-empty-placeholder">
           Train a model first to display results.
         </div>
       )}
 
-      {/* ---------------- MODEL SECTION ---------------- */}
       {activeModelTab && (
         <ModelSection
           modelType={activeModelTab}
@@ -983,8 +748,8 @@ function ResultsTabUI({
           onShowMap={onShowMap}
           setLoadingMap={setLoadingMap}
           setLoadingFieldName={setLoadingFieldName}
-          setSaveModalOpen={setSaveModalOpen} // ✅ Add
-          setSaveConfig={setSaveConfig} // ✅ Add
+          setSaveModalOpen={setSaveModalOpen}
+          setSaveConfig={setSaveConfig}
           userSchema={userSchema}
         />
       )}
@@ -998,9 +763,9 @@ function ModelSection({
   onShowMap,
   setLoadingMap,
   setLoadingFieldName,
-  setSaveModalOpen, // ✅ Add
-  setSaveConfig, // ✅ Add
-  userSchema, // ✅ Add
+  setSaveModalOpen,
+  setSaveConfig,
+  userSchema,
 }) {
   const [subTab, setSubTab] = useState("metrics");
 
@@ -1015,33 +780,31 @@ function ModelSection({
 
   return (
     <div className="blgf-ai-result">
-      <div className="blgf-ai-modeltitle">{niceName}</div>
+      <div className="blgf-ai-result-header">
+        <div className="blgf-ai-modeltitle">{niceName}</div>
+        <div className="blgf-ai-subtabs">
+          <div
+            className={`blgf-ai-subtab ${subTab === "metrics" ? "active" : ""}`}
+            onClick={() => setSubTab("metrics")}
+          >
+            Metrics
+          </div>
 
-      {/* SUB-TABS BAR */}
-      <div className="blgf-ai-subtabs">
-        <div
-          className={`blgf-ai-subtab ${subTab === "metrics" ? "active" : ""}`}
-          onClick={() => setSubTab("metrics")}
-        >
-          Metrics
-        </div>
+          <div
+            className={`blgf-ai-subtab ${subTab === "plots" ? "active" : ""}`}
+            onClick={() => setSubTab("plots")}
+          >
+            Plots
+          </div>
 
-        <div
-          className={`blgf-ai-subtab ${subTab === "plots" ? "active" : ""}`}
-          onClick={() => setSubTab("plots")}
-        >
-          Plots
-        </div>
-
-        <div
-          className={`blgf-ai-subtab ${subTab === "dist" ? "active" : ""}`}
-          onClick={() => setSubTab("dist")}
-        >
-          Distributions
+          <div
+            className={`blgf-ai-subtab ${subTab === "dist" ? "active" : ""}`}
+            onClick={() => setSubTab("dist")}
+          >
+            Distributions
+          </div>
         </div>
       </div>
-
-      {/* ================= CONTENT ================= */}
 
       {subTab === "metrics" && (
         <>
@@ -1051,17 +814,12 @@ function ModelSection({
             onShowMap={onShowMap}
             setLoadingMap={setLoadingMap}
             setLoadingFieldName={setLoadingFieldName}
-            setSaveModalOpen={setSaveModalOpen} // ✅ Already here
-            setSaveConfig={setSaveConfig} // ✅ Already here
-            userSchema={userSchema} // ✅ Already here
+            setSaveModalOpen={setSaveModalOpen}
+            setSaveConfig={setSaveConfig}
+            userSchema={userSchema}
           />
-
-          {/* Show Feature Importance for ALL models */}
           <ImportanceSection modelType={modelType} result={modelResult} />
-
-          {/* LR-specific coefficient details */}
           {modelType === "lr" && <LRCoefficientsSection result={modelResult} />}
-
           <ModelCAMA result={modelResult} />
         </>
       )}
@@ -1083,28 +841,26 @@ function MetricsSection({
   onShowMap,
   setLoadingMap,
   setLoadingFieldName,
-  setSaveModalOpen, // ✅ Add
-  setSaveConfig, // ✅ Add
-  userSchema, // ✅ Add
+  setSaveModalOpen,
+  setSaveConfig,
+  userSchema,
 }) {
   const metrics = result?.metrics || {};
   return (
     <>
-      {/* DOWNLOADS CARD */}
       <ModelDownloads
         modelType={modelType}
         result={result}
         onShowMap={onShowMap}
         setLoadingMap={setLoadingMap}
         setLoadingFieldName={setLoadingFieldName}
-        setSaveModalOpen={setSaveModalOpen} // ✅ Add
-        setSaveConfig={setSaveConfig} // ✅ Add
-        userSchema={userSchema} // ✅ Add
+        setSaveModalOpen={setSaveModalOpen}
+        setSaveConfig={setSaveConfig}
+        userSchema={userSchema}
       />
 
-      {/* METRICS CARD */}
       <div className="blgf-ai-card">
-        <div className="blgf-ai-subtitle2">Metrics</div>
+        <div className="blgf-ai-subtitle2">Performance Metrics</div>
 
         <table className="blgf-ai-table narrow">
           <tbody>
@@ -1122,6 +878,7 @@ function MetricsSection({
     </>
   );
 }
+
 function LRCoefficientsSection({ result }) {
   const coeffs = result?.coefficients || [];
   const tTests = result?.t_test?.coefficients || [];
@@ -1129,13 +886,11 @@ function LRCoefficientsSection({ result }) {
 
   return (
     <div className="blgf-ai-card">
-      <div className="blgf-ai-subtitle2">Coefficients</div>
+      <div className="blgf-ai-subtitle2">Coefficients Analysis</div>
 
-      {/* RAW COEFFICIENTS */}
       {coeffs.length > 0 && (
         <>
           <div className="blgf-ai-subtitle3">Raw Coefficients</div>
-
           <table className="blgf-ai-table narrow">
             <thead>
               <tr>
@@ -1155,11 +910,9 @@ function LRCoefficientsSection({ result }) {
         </>
       )}
 
-      {/* COEFFICIENT T-TESTS */}
       {tTests.length > 0 && (
         <>
-          <div className="blgf-ai-subtitle3">Coefficient T-Tests</div>
-
+          <div className="blgf-ai-subtitle3">T-Tests</div>
           <table className="blgf-ai-table narrow">
             <thead>
               <tr>
@@ -1169,7 +922,6 @@ function LRCoefficientsSection({ result }) {
                 <th className="align-right">p-Value</th>
               </tr>
             </thead>
-
             <tbody>
               {tTests.map((row, i) => (
                 <tr key={i}>
@@ -1184,11 +936,9 @@ function LRCoefficientsSection({ result }) {
         </>
       )}
 
-      {/* RESIDUALS T-TEST */}
       {residualTest?.t_stat !== undefined && (
         <>
           <div className="blgf-ai-subtitle3">Residual T-Test</div>
-
           <table className="blgf-ai-table narrow">
             <tbody>
               <tr>
@@ -1197,7 +947,6 @@ function LRCoefficientsSection({ result }) {
                   {residualTest.t_stat.toFixed(6)}
                 </td>
               </tr>
-
               <tr>
                 <td>p-Value</td>
                 <td className="align-right">
@@ -1219,7 +968,9 @@ function ImportanceSection({ modelType, result }) {
     return (
       <div className="blgf-ai-card">
         <div className="blgf-ai-subtitle2">Feature Importance</div>
-        <div style={{ color: "#94a3b8" }}>No feature importance available.</div>
+        <div className="blgf-ai-empty-text">
+          No feature importance available.
+        </div>
       </div>
     );
 
@@ -1232,14 +983,7 @@ function ImportanceSection({ modelType, result }) {
         <div className="blgf-ai-chart-title">
           Feature Importance ({modelType.toUpperCase()})
         </div>
-        {/* TABLE */}
-        <table
-          className="blgf-ai-table narrow"
-          style={{
-            marginBottom: "20px",
-            fontFamily: "Plus Jakarta Sans, system-ui, sans-serif",
-          }}
-        >
+        <table className="blgf-ai-table narrow mb-4">
           <thead>
             <tr>
               <th>Feature</th>
@@ -1255,8 +999,6 @@ function ImportanceSection({ modelType, result }) {
             ))}
           </tbody>
         </table>
-        {/* PLOTLY BAR CHART */}
-        jsx
         <Plot
           data={[
             {
@@ -1293,16 +1035,13 @@ function ImportanceSection({ modelType, result }) {
 
 function PlotsSection({ modelType, result }) {
   const d = result?.interactive_data || {};
-
   const y = d.y_test || [];
   const preds = d.preds || [];
-  const residuals = d.residuals || [];
   const bins = d.residual_bins || [];
   const binCounts = d.residual_counts || [];
 
   return (
     <>
-      {/* Actual vs Predicted */}
       <div className="blgf-ai-card">
         <div className="blgf-ai-chart-container">
           <div className="blgf-ai-chart-title">Actual vs Predicted</div>
@@ -1341,7 +1080,6 @@ function PlotsSection({ modelType, result }) {
         </div>
       </div>
 
-      {/* Residual Distribution */}
       <div className="blgf-ai-card">
         <div className="blgf-ai-chart-container">
           <div className="blgf-ai-chart-title">Residual Distribution</div>
@@ -1374,6 +1112,7 @@ function PlotsSection({ modelType, result }) {
     </>
   );
 }
+
 function VariableDistributions({ modelType, result }) {
   const dist = result?.variable_distributions || {};
   const vars = Object.keys(dist);
@@ -1382,7 +1121,9 @@ function VariableDistributions({ modelType, result }) {
     return (
       <div className="blgf-ai-card">
         <div className="blgf-ai-subtitle2">Variable Distributions</div>
-        <div style={{ color: "#94a3b8" }}>No distribution data available.</div>
+        <div className="blgf-ai-empty-text">
+          No distribution data available.
+        </div>
       </div>
     );
 
@@ -1395,15 +1136,7 @@ function VariableDistributions({ modelType, result }) {
           return (
             <div className="blgf-ai-card" key={v}>
               <div className="blgf-ai-subtitle2">{v}</div>
-              <div
-                style={{
-                  color: "#94a3b8",
-                  padding: "20px",
-                  textAlign: "center",
-                }}
-              >
-                No data available for this variable
-              </div>
+              <div className="blgf-ai-empty-text">No data available</div>
             </div>
           );
         }
@@ -1413,7 +1146,6 @@ function VariableDistributions({ modelType, result }) {
             <div className="blgf-ai-chart-container">
               <div className="blgf-ai-chart-title">Distribution of {v}</div>
 
-              {/* Stats Badges */}
               <div className="blgf-ai-stats-row">
                 <div className="blgf-ai-stat-badge">
                   <strong>Mean:</strong> {varData.mean?.toFixed(2) || "N/A"}
@@ -1431,7 +1163,6 @@ function VariableDistributions({ modelType, result }) {
                 )}
               </div>
 
-              {/* Histogram */}
               <Plot
                 data={[
                   {
@@ -1491,162 +1222,134 @@ function ModelDownloads({
     return url;
   };
 
-  // ✅ Extract raw path from shapefile URL
   const shapefileRawPath = dl.shapefile_raw || extractFilePath(dl.shapefile);
 
   const calculatePredictionRange = () => {
-    console.log("🔍 Calculating prediction range...");
     const interactiveData = result?.interactive_data || {};
     const preds = interactiveData.preds || [];
-
-    if (preds.length === 0) {
-      console.warn("⚠️ No predictions found");
-      return null;
-    }
-
-    const min = Math.min(...preds);
-    const max = Math.max(...preds);
-    console.log("✅ Prediction range:", { min, max });
-    return { min, max };
+    if (preds.length === 0) return null;
+    return { min: Math.min(...preds), max: Math.max(...preds) };
   };
 
   const calculateActualRange = () => {
-    console.log("🔍 Calculating actual values range...");
-    console.log("   Result object:", result);
     const interactiveData = result?.interactive_data || {};
     const actuals = interactiveData.y_test || [];
-
-    if (actuals.length === 0) {
-      console.warn("⚠️ No actual values found");
-      return null;
-    }
-
-    const min = Math.min(...actuals);
-    const max = Math.max(...actuals);
-    console.log("✅ Actual range:", { min, max });
-    return { min, max };
+    if (actuals.length === 0) return null;
+    return { min: Math.min(...actuals), max: Math.max(...actuals) };
   };
 
   return (
     <div className="blgf-ai-card">
-      <div className="blgf-ai-subtitle2">Downloads</div>
+      <div className="blgf-ai-subtitle2">Export & Actions</div>
 
-      <ul className="blgf-ai-downloads">
-        {dl.model && (
-          <li>
-            <a href={normalize(dl.model)} target="_blank">
-              📦 {modelType.toUpperCase()} Model (.pkl)
-            </a>
-          </li>
-        )}
+      <div className="blgf-ai-actions-grid">
+        <ul className="blgf-ai-downloads">
+          {dl.model && (
+            <li>
+              <a href={normalize(dl.model)} target="_blank">
+                Model File (.pkl)
+              </a>
+            </li>
+          )}
+          {dl.report && (
+            <li>
+              <a href={normalize(dl.report)} target="_blank">
+                PDF Report
+              </a>
+            </li>
+          )}
+          {dl.shapefile && (
+            <li>
+              <a href={normalize(dl.shapefile)} target="_blank">
+                Shapefile (.zip)
+              </a>
+            </li>
+          )}
+          {dl.cama_csv && (
+            <li>
+              <a href={normalize(dl.cama_csv)} target="_blank">
+                CAMA CSV
+              </a>
+            </li>
+          )}
+        </ul>
 
-        {dl.report && (
-          <li>
-            <a href={normalize(dl.report)} target="_blank">
-              📄 PDF Report
-            </a>
-          </li>
-        )}
+        <div className="blgf-ai-action-buttons">
+          {dl.shapefile && (
+            <button
+              className="blgf-ai-btn-primary wide"
+              onClick={async () => {
+                const actualField = result?.dependent_var || "unit_value";
+                setLoadingFieldName(actualField.toUpperCase());
+                setLoadingMap(true);
 
-        {dl.shapefile && (
-          <li>
-            <a href={normalize(dl.shapefile)} target="_blank">
-              🗺️ Predicted Shapefile (.zip)
-            </a>
-          </li>
-        )}
+                const rawPath =
+                  dl.shapefile_raw || extractFilePath(dl.shapefile);
+                const enc = encodeURIComponent(rawPath);
+                const url = `/api/ai-tools/preview-geojson?file_path=${enc}`;
 
-        {dl.cama_csv && (
-          <li>
-            <a href={normalize(dl.cama_csv)} target="_blank">
-              📊 CAMA CSV
-            </a>
-          </li>
-        )}
-      </ul>
+                const predictionRange = calculatePredictionRange();
+                const actualRange = calculateActualRange();
 
-      {dl.shapefile && (
-        <button
-          className="blgf-ai-btn-primary wide"
-          onClick={async () => {
-            const actualField = result?.dependent_var || "unit_value";
-            setLoadingFieldName(actualField.toUpperCase());
-            setLoadingMap(true);
+                onShowMap({
+                  url,
+                  label:
+                    modelType === "lr"
+                      ? "Linear Regression"
+                      : modelType === "rf"
+                        ? "Random Forest"
+                        : "XGBoost",
+                  predictionField: "prediction",
+                  actualField: result?.dependent_var || "actual_val",
+                  predictionRange: predictionRange,
+                  actualRange: actualRange,
+                });
 
-            const rawPath = dl.shapefile_raw || extractFilePath(dl.shapefile);
-            const enc = encodeURIComponent(rawPath);
-            const url = `/api/ai-tools/preview-geojson?file_path=${enc}`;
+                setTimeout(() => {
+                  setLoadingMap(false);
+                }, 1000);
+              }}
+            >
+              Visualize on Map
+            </button>
+          )}
 
-            const predictionRange = calculatePredictionRange();
-            const actualRange = calculateActualRange();
-
-            console.log("📦 Sending to map:", {
-              url,
-              predictionRange,
-              actualRange,
-              dependentVar: result?.dependent_var,
-            });
-
-            onShowMap({
-              url,
-              label:
-                modelType === "lr"
-                  ? "Linear Regression"
-                  : modelType === "rf"
-                    ? "Random Forest"
-                    : "XGBoost",
-              predictionField: "prediction",
-              actualField: result?.dependent_var || "actual_val",
-              predictionRange: predictionRange,
-              actualRange: actualRange,
-            });
-
-            setTimeout(() => {
-              setLoadingMap(false);
-            }, 1000);
-          }}
-        >
-          🗺️ Show On Map
-        </button>
-      )}
-      {dl.shapefile && (
-        <button
-          className="blgf-ai-btn-secondary wide"
-          style={{ marginTop: "10px" }}
-          onClick={() => {
-            console.log("💾 Save button clicked:", {
-              shapefileRawPath,
-              modelType,
-            });
-            setSaveConfig({
-              shapefilePath: shapefileRawPath,
-              saveType: "training",
-              modelType: modelType,
-            });
-            setSaveModalOpen(true);
-          }}
-        >
-          💾 Save to Database
-        </button>
-      )}
+          {dl.shapefile && (
+            <button
+              className="blgf-ai-btn-secondary wide"
+              onClick={() => {
+                setSaveConfig({
+                  shapefilePath: shapefileRawPath,
+                  saveType: "training",
+                  modelType: modelType,
+                });
+                setSaveModalOpen(true);
+              }}
+            >
+              Save to Database
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
+
 function ModelCAMA({ result }) {
   const rows = result?.cama_preview || [];
   if (!rows.length)
     return (
       <div className="blgf-ai-card">
-        <div className="blgf-ai-subtitle2">Training Result Preview</div>{" "}
-        <div style={{ color: "#94a3b8" }}>
+        <div className="blgf-ai-subtitle2">Training Result Preview</div>
+        <div className="blgf-ai-empty-text">
           No training data preview available.
-        </div>{" "}
+        </div>
       </div>
     );
   const columns = Object.keys(rows[0]);
   return (
     <div className="blgf-ai-card">
-      <div className="blgf-ai-subtitle2">Training Result Preview</div>{" "}
+      <div className="blgf-ai-subtitle2">Training Result Preview</div>
       <div className="blgf-ai-table-wrap" style={{ maxHeight: "260px" }}>
         <table className="blgf-ai-table narrow">
           <thead>

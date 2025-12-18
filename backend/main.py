@@ -5,7 +5,6 @@ from fastapi.responses import FileResponse
 import os
 import uvicorn
 
-from auth.routes import router as auth_router
 from AITools.ai_tools_router import router as ai_tools_router
 
 app = FastAPI()
@@ -19,7 +18,7 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-app.include_router(auth_router, prefix="/api")
+
 app.include_router(ai_tools_router, prefix="/api")
 
 

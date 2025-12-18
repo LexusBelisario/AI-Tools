@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useState } from "react";
 import AIToolsModal from "./MAP/PredictiveModelTools/AIToolsModal";
+import { useEffect, useState } from "react";
 
 export const API_URL =
   process.env.NODE_ENV === "production"
@@ -8,10 +8,26 @@ export const API_URL =
     : "http://localhost:8000";
 
 export default function App() {
-  const [panelOpen, setPanelOpen] = useState(true); 
+  const [panelOpen, setPanelOpen] = useState(true);
   const handleShowMap = (payload) => {
     console.log("🗺️ Show on map:", payload);
   };
+  const GIS_ORIGIN = import.meta.env.VITE_GIS_ORIGIN || "http://localhost:5173";
+
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.origin !== GIS_ORIGIN) return;
+      if (event.data?.type !== "AI_TOOLS_AUTH") return;
+
+      const token = event.data?.token;
+      if (!token) return;
+
+      localStorage.setItem("access_token", token);
+    };
+
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
 
   return (
     <Routes>
