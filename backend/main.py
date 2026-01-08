@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from common_routes import router as common_router
 import os
 import uvicorn
 
@@ -18,8 +19,8 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-
 app.include_router(ai_tools_router, prefix="/api")
+app.include_router(common_router, prefix="/api")
 
 
 @app.get("/health")
@@ -31,19 +32,26 @@ app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 INDEX_HTML = os.path.join(STATIC_DIR, "index.html")
 
+
 @app.middleware("http")
 async def react_fallback(request: Request, call_next):
+    path = request.url.path
+
     if (
-        not request.url.path.startswith("/api")
-        and not request.url.path.startswith("/assets")
-        and not request.url.path.startswith("/static")
-        and "." not in request.url.path
+        not path.startswith("/api")
+        and not path.startswith("/assets")
+        and not path.startswith("/static")
+        and not path.startswith("/docs")
+        and not path.startswith("/redoc")
+        and path != "/openapi.json"
+        and "." not in path
     ):
         if os.path.exists(INDEX_HTML):
             return FileResponse(INDEX_HTML)
+
     return await call_next(request)
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 8001))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

@@ -25,8 +25,6 @@ export default function AIToolsModal({
   onShowMap,
   schema: externalSchema = null,
 }) {
-  if (!isOpen) return null;
-
   const [availableTables, setAvailableTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState("");
   const userSchema = externalSchema;
@@ -41,38 +39,6 @@ export default function AIToolsModal({
   const [saveConfig, setSaveConfig] = useState(null);
   const PAGE_SIZE = 100;
 
-  const loadDatabasePreview = async (page) => {
-    if (!selectedTable || !userSchema) return;
-
-    try {
-      setPreviewPage(page);
-
-      const fd = new FormData();
-      fd.append("schema", userSchema);
-      fd.append("table_name", selectedTable);
-      fd.append("limit", PAGE_SIZE);
-      fd.append("offset", (page - 1) * PAGE_SIZE);
-
-      const res = await fetch(`${API}/ai-tools/preview-db`, {
-        method: "POST",
-        body: fd,
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        alert(`Server error: ${res.status} - ${errorText}`);
-        return;
-      }
-
-      const data = await res.json();
-
-      setPreviewRows(data.rows || []);
-      setPreviewTotal(data.total || 0);
-    } catch (err) {
-      alert("Preview failed: " + err.message);
-    }
-  };
-
   const [activeTab, setActiveTab] = useState("inputs");
 
   const [modelChecks, setModelChecks] = useState({
@@ -86,10 +52,112 @@ export default function AIToolsModal({
     rf: null,
     xgb: null,
   });
+
   const [activeModelTab, setActiveModelTab] = useState(null);
   const [training, setTraining] = useState(false);
   const [loadingMap, setLoadingMap] = useState(false);
   const [loadingFieldName, setLoadingFieldName] = useState("");
+
+  const token = localStorage.getItem("access_token");
+
+  const authFetch = (url, options = {}) => {
+    const headers = { ...(options.headers || {}) };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return fetch(url, { ...options, headers });
+  };
+
+  const [commonStatus, setCommonStatus] = useState({
+    connected: false,
+    meta: null,
+  });
+  const [commonBusy, setCommonBusy] = useState(false);
+  const [commonError, setCommonError] = useState("");
+
+  const loadCommonStatus = async () => {
+    if (!token) {
+      setCommonStatus({ connected: false, meta: null });
+      return;
+    }
+    try {
+      setCommonError("");
+      const res = await authFetch(`${API}/common/status`);
+      const data = await res.json();
+      setCommonStatus(data);
+    } catch (e) {
+      setCommonStatus({ connected: false, meta: null });
+      setCommonError("Unable to check common connection status.");
+    }
+  };
+
+  const connectCommon = async () => {
+    if (!token) {
+      setCommonError("No token received.");
+      return;
+    }
+
+    setCommonBusy(true);
+    setCommonError("");
+    try {
+      const res = await authFetch(`${API}/common/connect`, { method: "POST" });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || "Connect failed");
+      setCommonStatus(data);
+    } catch (e) {
+      setCommonStatus({ connected: false, meta: null });
+      setCommonError(e.message || "Connect failed");
+    } finally {
+      setCommonBusy(false);
+    }
+  };
+
+  const disconnectCommon = async () => {
+    if (!token) return;
+    setCommonBusy(true);
+    setCommonError("");
+    try {
+      const res = await authFetch(`${API}/common/disconnect`, {
+        method: "POST",
+      });
+      await res.json();
+      await loadCommonStatus();
+    } catch (e) {
+      setCommonError("Disconnect failed.");
+    } finally {
+      setCommonBusy(false);
+    }
+  };
+
+  const loadDatabasePreview = async (page) => {
+    if (!selectedTable || !userSchema) return;
+
+    try {
+      setPreviewPage(page);
+
+      const fd = new FormData();
+      fd.append("schema", userSchema);
+      fd.append("table_name", selectedTable);
+      fd.append("limit", PAGE_SIZE);
+      fd.append("offset", (page - 1) * PAGE_SIZE);
+
+      const res = await authFetch(`${API}/ai-tools/preview-db`, {
+        method: "POST",
+        body: fd,
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        alert(`Server error: ${res.status} - ${errorText}`);
+        return;
+      }
+
+      const data = await res.json();
+      setPreviewRows(data.rows || []);
+      setPreviewTotal(data.total || 0);
+    } catch (err) {
+      alert("Preview failed: " + err.message);
+    }
+  };
 
   const loadAvailableTables = async () => {
     if (!userSchema) return;
@@ -98,13 +166,13 @@ export default function AIToolsModal({
       const fd = new FormData();
       fd.append("schema", userSchema);
 
-      const res = await fetch(`${API}/ai-tools/list-tables`, {
+      const res = await authFetch(`${API}/ai-tools/list-tables`, {
         method: "POST",
         body: fd,
       });
 
       if (!res.ok) {
-        const errorText = await res.text();
+        await res.text();
         alert(`Failed to load tables: ${res.status}`);
         return;
       }
@@ -122,8 +190,6 @@ export default function AIToolsModal({
     }
   };
 
-  const hasResults = !!(results.lr || results.rf || results.xgb);
-
   const loadTableFields = async () => {
     if (!selectedTable || !userSchema) return;
 
@@ -132,7 +198,7 @@ export default function AIToolsModal({
       fd.append("schema", userSchema);
       fd.append("table_name", selectedTable);
 
-      const res = await fetch(`${API}/ai-tools/fields-db`, {
+      const res = await authFetch(`${API}/ai-tools/fields-db`, {
         method: "POST",
         body: fd,
       });
@@ -198,7 +264,7 @@ export default function AIToolsModal({
             ? "/ai-tools/train-rf/train"
             : "/ai-tools/train-xgb/train";
 
-      const res = await fetch(`${API}${endpoint}`, {
+      const res = await authFetch(`${API}${endpoint}`, {
         method: "POST",
         body: fd,
       });
@@ -214,6 +280,12 @@ export default function AIToolsModal({
 
     setTraining(false);
   };
+
+  const hasResults = !!(results.lr || results.rf || results.xgb);
+
+  useEffect(() => {
+    if (isOpen) loadCommonStatus();
+  }, [isOpen]);
 
   useEffect(() => {
     if (userSchema) {
@@ -234,6 +306,7 @@ export default function AIToolsModal({
     setPreviewTotal(0);
     setDependentVar("");
     setIndependentVars([]);
+    setExcludedIndices([]);
   }, [userSchema]);
 
   useEffect(() => {
@@ -247,6 +320,8 @@ export default function AIToolsModal({
       loadDatabasePreview(1);
     }
   }, [dependentVar, JSON.stringify(independentVars)]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="blgf-ai-root">
@@ -270,6 +345,58 @@ export default function AIToolsModal({
           </button>
         </div>
 
+        <div className="blgf-ai-block" style={{ marginTop: 12 }}>
+          <div className="blgf-ai-label">Common Table Connection</div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ fontSize: 12, opacity: 0.8 }}>
+              {commonStatus?.connected
+                ? `Connected: ${commonStatus?.meta?.user}@${commonStatus?.meta?.host}:${commonStatus?.meta?.port}/${commonStatus?.meta?.dbname}`
+                : "Not connected"}
+            </div>
+
+            <div
+              style={{
+                marginLeft: "auto",
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+              }}
+            >
+              {commonStatus?.connected ? (
+                <button
+                  className="blgf-ai-btn-secondary"
+                  disabled={commonBusy}
+                  onClick={disconnectCommon}
+                >
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  className="blgf-ai-btn-primary"
+                  disabled={commonBusy || !token}
+                  onClick={connectCommon}
+                >
+                  {commonBusy ? "Connecting..." : "Connect"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {commonError && (
+            <div className="blgf-ai-helper-text error" style={{ marginTop: 8 }}>
+              {commonError}
+            </div>
+          )}
+        </div>
+
         <div className="blgf-ai-tabs">
           <div
             className={`blgf-ai-tab ${activeTab === "inputs" ? "active" : ""}`}
@@ -279,7 +406,9 @@ export default function AIToolsModal({
           </div>
 
           <div
-            className={`blgf-ai-tab ${activeTab === "results" ? "active" : ""} ${!hasResults ? "disabled" : ""}`}
+            className={`blgf-ai-tab ${activeTab === "results" ? "active" : ""} ${
+              !hasResults ? "disabled" : ""
+            }`}
             onClick={() => {
               if (hasResults) {
                 setActiveTab("results");
@@ -290,7 +419,9 @@ export default function AIToolsModal({
           </div>
 
           <div
-            className={`blgf-ai-tab ${activeTab === "run-saved" ? "active" : ""}`}
+            className={`blgf-ai-tab ${
+              activeTab === "run-saved" ? "active" : ""
+            }`}
             onClick={() => setActiveTab("run-saved")}
           >
             Run Saved
@@ -312,6 +443,7 @@ export default function AIToolsModal({
             setModelChecks={setModelChecks}
             toggleExcludedRow={toggleExcludedRow}
             excludedIndices={excludedIndices}
+            setExcludedIndices={setExcludedIndices}
             handleTrain={handleTrain}
             training={training}
             userSchema={userSchema}
@@ -335,6 +467,7 @@ export default function AIToolsModal({
             userSchema={userSchema}
           />
         )}
+
         {activeTab === "run-saved" && (
           <RunSavedTabUI
             onShowMap={onShowMap}
@@ -344,6 +477,7 @@ export default function AIToolsModal({
           />
         )}
       </div>
+
       <SaveToDBModal
         isOpen={saveModalOpen}
         onClose={() => {
@@ -481,6 +615,7 @@ function InputsTabUI({
   modelChecks,
   setModelChecks,
   excludedIndices,
+  setExcludedIndices,
   toggleExcludedRow,
   handleTrain,
   training,
@@ -709,7 +844,9 @@ function ResultsTabUI({
       <div className="blgf-ai-modeltabs">
         {hasLR && (
           <div
-            className={`blgf-ai-modeltab ${activeModelTab === "lr" ? "active" : ""}`}
+            className={`blgf-ai-modeltab ${
+              activeModelTab === "lr" ? "active" : ""
+            }`}
             onClick={() => setActiveModelTab("lr")}
           >
             Linear Regression
@@ -718,7 +855,9 @@ function ResultsTabUI({
 
         {hasRF && (
           <div
-            className={`blgf-ai-modeltab ${activeModelTab === "rf" ? "active" : ""}`}
+            className={`blgf-ai-modeltab ${
+              activeModelTab === "rf" ? "active" : ""
+            }`}
             onClick={() => setActiveModelTab("rf")}
           >
             Random Forest
@@ -727,7 +866,9 @@ function ResultsTabUI({
 
         {hasXGB && (
           <div
-            className={`blgf-ai-modeltab ${activeModelTab === "xgb" ? "active" : ""}`}
+            className={`blgf-ai-modeltab ${
+              activeModelTab === "xgb" ? "active" : ""
+            }`}
             onClick={() => setActiveModelTab("xgb")}
           >
             XGBoost
