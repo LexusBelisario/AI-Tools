@@ -24,10 +24,10 @@ export default function AIToolsModal({
   onClose,
   onShowMap,
   schema: externalSchema = null,
+  token = "",
 }) {
   const [availableTables, setAvailableTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState("");
-  const userSchema = externalSchema;
   const [fields, setFields] = useState([]);
   const [dependentVar, setDependentVar] = useState("");
   const [independentVars, setIndependentVars] = useState([]);
@@ -58,24 +58,56 @@ export default function AIToolsModal({
   const [loadingMap, setLoadingMap] = useState(false);
   const [loadingFieldName, setLoadingFieldName] = useState("");
 
-  const token = localStorage.getItem("access_token");
+  const decodeJwtPayload = (tok) => {
+    try {
+      const part = tok.split(".")[1];
+      const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+      const json = decodeURIComponent(
+        atob(b64)
+          .split("")
+          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join("")
+      );
+      return JSON.parse(json);
+    } catch {
+      return {};
+    }
+  };
+
+  const tokenPayload = decodeJwtPayload(token);
+
+  // try to find db in token payload (adjust keys depending on your GIS token)
+  const userDb =
+    tokenPayload.db ||
+    tokenPayload.db_name ||
+    tokenPayload.dbname ||
+    tokenPayload.prov_dbname ||
+    null;
 
   const authFetch = (url, options = {}) => {
     const headers = { ...(options.headers || {}) };
     if (token) headers.Authorization = `Bearer ${token}`;
+
+    if (userSchema) headers["X-Target-Schema"] = userSchema;
+    if (userDb) headers["X-Target-DB"] = userDb;
+
     return fetch(url, { ...options, headers });
   };
 
   const [commonStatus, setCommonStatus] = useState({
     connected: false,
-    meta: null,
+    context: null,
   });
+
   const [commonBusy, setCommonBusy] = useState(false);
   const [commonError, setCommonError] = useState("");
 
+  const resolvedSchema = commonStatus?.context?.schema || null;
+  const userSchema = externalSchema || resolvedSchema;
+
   const loadCommonStatus = async () => {
     if (!token) {
-      setCommonStatus({ connected: false, meta: null });
+      setCommonStatus({ connected: false, context: null });
       return;
     }
     try {
@@ -84,7 +116,7 @@ export default function AIToolsModal({
       const data = await res.json();
       setCommonStatus(data);
     } catch (e) {
-      setCommonStatus({ connected: false, meta: null });
+      setCommonStatus({ connected: false, context: null });
       setCommonError("Unable to check common connection status.");
     }
   };
@@ -100,11 +132,20 @@ export default function AIToolsModal({
     try {
       const res = await authFetch(`${API}/common/connect`, { method: "POST" });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.detail || "Connect failed");
+      let data = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = { detail: await res.text() };
+      }
+
+      if (!res.ok) {
+        console.log("CONNECT ERROR RESPONSE:", data);
+        throw new Error(data?.detail || "Connect failed");
+      }
       setCommonStatus(data);
     } catch (e) {
-      setCommonStatus({ connected: false, meta: null });
+      setCommonStatus({ connected: false, context: null });
       setCommonError(e.message || "Connect failed");
     } finally {
       setCommonBusy(false);
@@ -112,20 +153,8 @@ export default function AIToolsModal({
   };
 
   const disconnectCommon = async () => {
-    if (!token) return;
-    setCommonBusy(true);
+    setCommonStatus({ connected: false, context: null });
     setCommonError("");
-    try {
-      const res = await authFetch(`${API}/common/disconnect`, {
-        method: "POST",
-      });
-      await res.json();
-      await loadCommonStatus();
-    } catch (e) {
-      setCommonError("Disconnect failed.");
-    } finally {
-      setCommonBusy(false);
-    }
   };
 
   const loadDatabasePreview = async (page) => {
@@ -284,6 +313,20 @@ export default function AIToolsModal({
   const hasResults = !!(results.lr || results.rf || results.xgb);
 
   useEffect(() => {
+    if (!isOpen) return;
+    if (!token) return;
+
+    // auto-connect once, so user doesn't have to click Connect
+    connectCommon();
+    console.log(
+      "TOKEN (first 30):",
+      (token || "").slice(0, 30),
+      "len=",
+      (token || "").length
+    );
+  }, [isOpen, token]);
+
+  useEffect(() => {
     if (isOpen) loadCommonStatus();
   }, [isOpen]);
 
@@ -358,7 +401,7 @@ export default function AIToolsModal({
           >
             <div style={{ fontSize: 12, opacity: 0.8 }}>
               {commonStatus?.connected
-                ? `Connected: ${commonStatus?.meta?.user}@${commonStatus?.meta?.host}:${commonStatus?.meta?.port}/${commonStatus?.meta?.dbname}`
+                ? `Connected: ${commonStatus?.context?.db}.${commonStatus?.context?.schema}`
                 : "Not connected"}
             </div>
 
