@@ -7,6 +7,7 @@ export default function App() {
   const [token, setToken] = useState(
     () => localStorage.getItem("access_token") || ""
   );
+  const [shouldDisconnect, setShouldDisconnect] = useState(false);
 
   const handleShowMap = (payload) => {
     console.log("🗺️ Show on map:", payload);
@@ -14,24 +15,63 @@ export default function App() {
 
   // Change this if GIS runs on a different origin
   const GIS_ORIGIN = import.meta.env.VITE_GIS_ORIGIN || "http://localhost:5173";
+  const API = import.meta.env.VITE_API_URL || "http://localhost:8001";
 
   useEffect(() => {
-    const handler = (event) => {
+    const handler = async (event) => {
       // Security: only accept messages from GIS
-      if (event.origin !== GIS_ORIGIN) return;
+      if (event.origin !== GIS_ORIGIN) {
+        console.warn("⚠️ Message from untrusted origin:", event.origin);
+        return;
+      }
 
-      if (event.data?.type !== "AI_TOOLS_AUTH") return;
+      const { type, token: receivedToken } = event.data;
 
-      const t = event.data?.token;
-      if (!t) return;
+      // Handle token authentication
+      if (type === "AI_TOOLS_AUTH") {
+        if (!receivedToken) return;
 
-      localStorage.setItem("access_token", t);
-      setToken(t); // ✅ crucial: re-render immediately
+        console.log("✅ Received token from GIS");
+        localStorage.setItem("access_token", receivedToken);
+        setToken(receivedToken);
+        setShouldDisconnect(false); // Reset disconnect flag
+      }
+
+      // Handle disconnect request
+      if (type === "AI_TOOLS_DISCONNECT") {
+        console.log("🔌 Disconnect requested by GIS");
+
+        // Call disconnect API
+        try {
+          const currentToken = localStorage.getItem("access_token");
+          if (currentToken) {
+            const response = await fetch(`${API}/api/common/disconnect`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${currentToken}`,
+              },
+            });
+
+            if (response.ok) {
+              console.log("✅ Disconnected from Common DB");
+            } else {
+              console.warn("⚠️ Disconnect API returned:", response.status);
+            }
+          }
+        } catch (err) {
+          console.error("❌ Disconnect error:", err);
+        }
+
+        // Clear local state
+        localStorage.removeItem("access_token");
+        setToken("");
+        setShouldDisconnect(true); // Signal to child components
+      }
     };
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [GIS_ORIGIN]);
+  }, [GIS_ORIGIN, API]);
 
   return (
     <Routes>
@@ -43,7 +83,8 @@ export default function App() {
             isOpen={panelOpen}
             onClose={() => setPanelOpen(false)}
             onShowMap={handleShowMap}
-            token={token} // ✅ pass token
+            token={token}
+            shouldDisconnect={shouldDisconnect} // Pass disconnect signal
           />
         }
       />

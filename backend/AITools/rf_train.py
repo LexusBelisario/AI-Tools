@@ -27,7 +27,9 @@ from AITools.ai_utils import (
     gdf_from_zip_or_parts,
     extract_pin_column,
     compute_variable_distributions,
-    get_next_model_version
+    get_next_model_version,
+    upsert_pin_field, 
+    drop_duplicate_pin_fields
 )
 
 router = APIRouter()
@@ -378,8 +380,8 @@ def export_rf_report_and_artifacts(
             
             # Add PIN
             if pin_series is not None:
-                valid_gdf["PIN"] = pin_series.iloc[original_indices].values
-                print("   ✅ Added PIN")
+                upsert_pin_field(valid_gdf, pin_series.iloc[original_indices].values)
+            drop_duplicate_pin_fields(valid_gdf)
             
             # ✅ Add actual values
             valid_gdf[target] = df_valid[target].values

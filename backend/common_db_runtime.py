@@ -92,18 +92,57 @@ def _decode_token(token: str) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail=f"Signature verification failed. ({str(e)})")
 
 
-# Province code → name mapping (add all your provinces)
-PROVINCE_NAMES = {
-    "PH04021": "Cavite",
-    "PH04034": "Laguna",
-    # Add more as needed...
-}
+def _lookup_db_by_province_code(prov_code: str) -> Optional[str]:
+    """
+    Query PostgreSQL to find database name matching province PSGC code.
+    Returns the actual database name (e.g., 'PH04021_Cavite').
+    """
+    try:
+        # Connect to postgres system DB to list all databases
+        host = _env("COMMON_DB_HOST")
+        port = _env("COMMON_DB_PORT", "5432")
+        user = _env("COMMON_DB_USER")
+        password = _env("COMMON_DB_PASSWORD")
+        sslmode = _env("COMMON_DB_SSLMODE", "require")
+        
+        url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/postgres?sslmode={sslmode}"
+        temp_engine = create_engine(url, pool_pre_ping=True)
+        
+        with temp_engine.connect() as conn:
+            result = conn.execute(text(
+                "SELECT datname FROM pg_database WHERE datname LIKE :pattern"
+            ), {"pattern": f"{prov_code}_%"})
+            
+            db_names = [row[0] for row in result]
+            if db_names:
+                return db_names[0]  # Return first match
+        
+        return None
+    except Exception as e:
+        print(f"Warning: Could not lookup database for {prov_code}: {e}")
+        return None
 
-# Municipality code → name mapping (add all your municipalities)
-MUNICIPALITY_NAMES = {
-    "PH0402118": "Silang",
-    # Add more as needed...
-}
+
+def _lookup_schema_by_mun_code(db_name: str, mun_code: str) -> Optional[str]:
+    """
+    Query the database to find schema name matching municipal PSGC code.
+    Returns the actual schema name (e.g., 'PH0402118_Silang').
+    """
+    try:
+        engine = _get_engine(db_name)
+        with engine.connect() as conn:
+            result = conn.execute(text(
+                "SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE :pattern"
+            ), {"pattern": f"{mun_code}_%"})
+            
+            schema_names = [row[0] for row in result]
+            if schema_names:
+                return schema_names[0]  # Return first match
+        
+        return None
+    except Exception as e:
+        print(f"Warning: Could not lookup schema for {mun_code}: {e}")
+        return None
 
 
 def resolve_common_context_from_token(
@@ -112,12 +151,13 @@ def resolve_common_context_from_token(
     schema_override: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Decode token and extract db/schema.
-    Headers can override token values.
+    Decode token and extract db/schema by matching PSGC codes.
     
     For your GIS token structure:
-    - provincial_access (e.g., 'PH04021') → 'PH04021_Cavite'
-    - municipal_access (e.g., 'PH0402118') → 'PH0402118_Silang'
+    - provincial_access (e.g., 'PH04021') → looks up 'PH04021_Cavite' from database list
+    - municipal_access (e.g., 'PH0402118') → looks up 'PH0402118_Silang' from schemas
+    
+    This matches schemas by PSGC code prefix, just like your GIS app.
     """
     payload = _decode_token(token)
 
@@ -125,34 +165,39 @@ def resolve_common_context_from_token(
     if db_override and schema_override:
         return {"db": str(db_override), "schema": str(schema_override)}
 
-    # Get province code from token
+    # Get codes from token
     prov_code = payload.get("provincial_access")
     mun_code = payload.get("municipal_access")
 
-    # Build database name: PH04021 → PH04021_Cavite
-    if db_override:
-        db_name = db_override
-    elif prov_code:
-        prov_name = PROVINCE_NAMES.get(prov_code, prov_code)
-        db_name = f"{prov_code}_{prov_name}"
-    else:
-        db_name = None
-
-    # Build schema name: PH0402118 → PH0402118_Silang
-    if schema_override:
-        schema = schema_override
-    elif mun_code:
-        mun_name = MUNICIPALITY_NAMES.get(mun_code, mun_code)
-        schema = f"{mun_code}_{mun_name}"
-    else:
-        schema = None
-
-    if not db_name or not schema:
+    if not prov_code or not mun_code:
         raise HTTPException(
             status_code=401,
-            detail=f"Token missing db/schema (db={db_name}, schema={schema}). Token claims: {list(payload.keys())}",
+            detail=f"Token missing provincial_access or municipal_access. Token claims: {list(payload.keys())}",
         )
 
+    # Lookup actual database name by province code
+    if db_override:
+        db_name = db_override
+    else:
+        db_name = _lookup_db_by_province_code(prov_code)
+        if not db_name:
+            raise HTTPException(
+                status_code=401,
+                detail=f"No database found matching province code '{prov_code}'. Check COMMON_DB connection.",
+            )
+
+    # Lookup actual schema name by municipal code
+    if schema_override:
+        schema = schema_override
+    else:
+        schema = _lookup_schema_by_mun_code(db_name, mun_code)
+        if not schema:
+            raise HTTPException(
+                status_code=401,
+                detail=f"No schema found in database '{db_name}' matching municipal code '{mun_code}'.",
+            )
+
+    print(f"✅ Resolved: {prov_code} → {db_name}, {mun_code} → {schema}")
     return {"db": str(db_name), "schema": str(schema)}
 
 

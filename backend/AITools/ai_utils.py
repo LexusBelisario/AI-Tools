@@ -664,3 +664,39 @@ def get_next_model_version(model_type: str) -> int:
     
     return max(versions) + 1 if versions else 1
 
+
+def find_pin_field(columns) -> Optional[str]:
+    for c in columns:
+        if str(c).lower() == "pin":
+            return c
+    return None
+
+
+def upsert_pin_field(gdf: "gpd.GeoDataFrame", pin_values, preferred_name: str = "PIN") -> str:
+    existing = find_pin_field(gdf.columns)
+
+    if existing:
+        gdf[existing] = pin_values
+        return str(existing)
+
+    gdf[preferred_name] = pin_values
+    return preferred_name
+
+
+def drop_duplicate_pin_fields(gdf: "gpd.GeoDataFrame", keep_name: str = "PIN"):
+    pin_cols = [c for c in gdf.columns if str(c).lower() == "pin"]
+    if len(pin_cols) <= 1:
+        return
+
+    keep = None
+    for c in pin_cols:
+        if str(c) == keep_name:
+            keep = c
+            break
+    if keep is None:
+        keep = pin_cols[0]
+
+    for c in pin_cols:
+        if c != keep:
+            gdf.drop(columns=[c], inplace=True, errors="ignore")
+

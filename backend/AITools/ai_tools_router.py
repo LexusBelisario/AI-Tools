@@ -32,3 +32,5 @@ async def ai_tools_status():
     return {"status": "AI Tools Router Loaded", "modules": [
         "train", "fields", "preview", "run-saved-model", "downloads", "train-lr", "train-rf", "train-xgb"
     ]}
+
+

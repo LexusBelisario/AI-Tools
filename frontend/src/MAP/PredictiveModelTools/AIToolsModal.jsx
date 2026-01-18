@@ -25,6 +25,7 @@ export default function AIToolsModal({
   onShowMap,
   schema: externalSchema = null,
   token = "",
+  shouldDisconnect = false,
 }) {
   const [availableTables, setAvailableTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState("");
@@ -37,6 +38,7 @@ export default function AIToolsModal({
   const [previewPage, setPreviewPage] = useState(1);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saveConfig, setSaveConfig] = useState(null);
+
   const PAGE_SIZE = 100;
 
   const [activeTab, setActiveTab] = useState("inputs");
@@ -129,6 +131,9 @@ export default function AIToolsModal({
 
     setCommonBusy(true);
     setCommonError("");
+
+    console.log("🔄 Connecting with schema:", externalSchema); // 👈 ADD THIS
+
     try {
       const res = await authFetch(`${API}/common/connect`, { method: "POST" });
 
@@ -140,9 +145,11 @@ export default function AIToolsModal({
       }
 
       if (!res.ok) {
-        console.log("CONNECT ERROR RESPONSE:", data);
+        console.log("❌ CONNECT ERROR:", data);
         throw new Error(data?.detail || "Connect failed");
       }
+
+      console.log("✅ Connected to:", data.context); // 👈 ADD THIS
       setCommonStatus(data);
     } catch (e) {
       setCommonStatus({ connected: false, context: null });
@@ -275,7 +282,6 @@ export default function AIToolsModal({
     }
     fdBase.append("schema", userSchema);
     fdBase.append("table_name", selectedTable);
-
     fdBase.append("dependent_var", dependentVar);
     fdBase.append("independent_vars", JSON.stringify(independentVars));
     fdBase.append("excluded_indices", JSON.stringify(excludedIndices));
@@ -307,24 +313,81 @@ export default function AIToolsModal({
     const first = selected.find((m) => newResults[m]);
     setActiveModelTab(first);
 
+    console.log("🔄 Auto-saving training results to Common Table Database...");
+    await autoSaveToCommonDB(newResults, selected);
+
     setTraining(false);
   };
 
+  const autoSaveToCommonDB = async (results, trainedModels) => {
+    for (const modelType of trainedModels) {
+      const result = results[modelType];
+      if (!result) continue;
+
+      try {
+        console.log(
+          `📤 Auto-saving ${modelType.toUpperCase()} to Common DB...`
+        );
+
+        const formData = new FormData();
+
+        // Model file path
+        if (result.downloads?.model) {
+          const modelPath = result.downloads.model.includes("?file=")
+            ? decodeURIComponent(result.downloads.model.split("?file=")[1])
+            : result.downloads.model;
+          formData.append("model_path", modelPath);
+        }
+
+        // Shapefile path for predictions
+        if (result.downloads?.shapefile_raw || result.downloads?.shapefile) {
+          const shpPath =
+            result.downloads.shapefile_raw ||
+            (result.downloads.shapefile.includes("?file=")
+              ? decodeURIComponent(
+                  result.downloads.shapefile.split("?file=")[1]
+                )
+              : result.downloads.shapefile);
+          formData.append("shapefile_path", shpPath);
+        }
+
+        formData.append("model_type", modelType);
+        formData.append("model_version", result.model_version || 1);
+        formData.append(
+          "dependent_var",
+          result.dependent_var || result.original_dependent_var || ""
+        );
+        formData.append("features_json", JSON.stringify(result.features || []));
+        formData.append("metrics_json", JSON.stringify(result.metrics || {}));
+
+        const response = await authFetch(
+          `${API}/common/auto-save-training-results`,
+          {
+            method: "POST",
+            headers: {
+              "X-Target-Schema": userSchema,
+            },
+            body: formData,
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log(
+            `✅ ${modelType.toUpperCase()} auto-saved to Common DB:`,
+            data
+          );
+        } else {
+          const error = await response.text();
+          console.warn(`⚠️ Failed to auto-save ${modelType}:`, error);
+        }
+      } catch (err) {
+        console.error(`❌ Auto-save error for ${modelType}:`, err);
+      }
+    }
+  };
+
   const hasResults = !!(results.lr || results.rf || results.xgb);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    if (!token) return;
-
-    // auto-connect once, so user doesn't have to click Connect
-    connectCommon();
-    console.log(
-      "TOKEN (first 30):",
-      (token || "").slice(0, 30),
-      "len=",
-      (token || "").length
-    );
-  }, [isOpen, token]);
 
   useEffect(() => {
     if (isOpen) loadCommonStatus();
@@ -343,6 +406,29 @@ export default function AIToolsModal({
   }, [selectedTable]);
 
   useEffect(() => {
+    if (!isOpen) {
+      // Clear everything when modal closes
+      setCommonStatus({ connected: false, context: null });
+      setSelectedTable("");
+      setFields([]);
+      setPreviewRows([]);
+      setPreviewTotal(0);
+      setDependentVar("");
+      setIndependentVars([]);
+      setExcludedIndices([]);
+      setResults({ lr: null, rf: null, xgb: null });
+      setActiveModelTab(null);
+      setAvailableTables([]);
+      return;
+    }
+
+    // When modal opens, force fresh connection
+    if (token) {
+      connectCommon();
+    }
+  }, [isOpen, token]);
+
+  useEffect(() => {
     setSelectedTable("");
     setFields([]);
     setPreviewRows([]);
@@ -350,21 +436,33 @@ export default function AIToolsModal({
     setDependentVar("");
     setIndependentVars([]);
     setExcludedIndices([]);
+    setResults({ lr: null, rf: null, xgb: null });
+    setActiveModelTab(null);
   }, [userSchema]);
 
+  if (!isOpen) return null;
+
   useEffect(() => {
-    if (!dependentVar && independentVars.length === 0) {
+    if (shouldDisconnect) {
+      console.log("🔌 Handling disconnect signal from parent");
+
+      // Clear all state
+      setCommonStatus({ connected: false, context: null });
+      setSelectedTable("");
+      setFields([]);
       setPreviewRows([]);
       setPreviewTotal(0);
-      return;
-    }
+      setDependentVar("");
+      setIndependentVars([]);
+      setExcludedIndices([]);
+      setResults({ lr: null, rf: null, xgb: null });
+      setActiveModelTab(null);
+      setAvailableTables([]);
+      setCommonError("");
 
-    if (selectedTable) {
-      loadDatabasePreview(1);
+      console.log("✅ AI Tools state cleared");
     }
-  }, [dependentVar, JSON.stringify(independentVars)]);
-
-  if (!isOpen) return null;
+  }, [shouldDisconnect]);
 
   return (
     <div className="blgf-ai-root">
@@ -527,10 +625,14 @@ export default function AIToolsModal({
           setSaveModalOpen(false);
           setSaveConfig(null);
         }}
-        shapefilePath={saveConfig?.shapefilePath}
         userSchema={userSchema}
+        token={token}
         saveType={saveConfig?.saveType}
         modelType={saveConfig?.modelType}
+        modelPath={saveConfig?.modelPath}
+        dependentVar={saveConfig?.dependentVar}
+        independentVars={saveConfig?.independentVars}
+        shapefilePath={saveConfig?.shapefilePath}
       />
     </div>
   );
@@ -1406,6 +1508,7 @@ function ModelDownloads({
     return url;
   };
 
+  const modelRawPath = dl.model_raw || extractFilePath(dl.model);
   const shapefileRawPath = dl.shapefile_raw || extractFilePath(dl.shapefile);
 
   const calculatePredictionRange = () => {
@@ -1503,9 +1606,12 @@ function ModelDownloads({
               className="blgf-ai-btn-secondary wide"
               onClick={() => {
                 setSaveConfig({
-                  shapefilePath: shapefileRawPath,
-                  saveType: "training",
+                  saveType: "model",
                   modelType: modelType,
+                  modelPath: modelRawPath,
+                  dependentVar: result?.dependent_var || "",
+                  independentVars: result?.independent_vars || [],
+                  shapefilePath: shapefileRawPath,
                 });
                 setSaveModalOpen(true);
               }}
