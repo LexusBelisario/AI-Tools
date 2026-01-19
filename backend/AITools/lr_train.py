@@ -14,7 +14,13 @@ from datetime import datetime
 from scipy import stats
 from sqlalchemy import text
 from db import get_user_database_session
-from AITools.ai_utils import extract_pin_column, compute_variable_distributions, get_next_model_version
+from AITools.ai_utils import (
+    extract_pin_column,
+    compute_variable_distributions,
+    get_next_model_version,
+    upsert_pin_field,
+    drop_duplicate_pin_fields,
+)
 
 router = APIRouter()
 
@@ -599,26 +605,20 @@ async def train_linear_regression(
         # Export CSV with predictions
         preds_valid = model.predict(scaler.transform(df_valid[indep]))
         df_valid = df_valid.copy()
-        if pin_series is not None:
-            df_valid["PIN"] = pin_series.iloc[df_valid.index].values
-
         df_valid["prediction"] = preds_valid
-        
-        # 🔑 Define safe_target_name HERE (before shapefile export)
+
+        # Needed for shapefile export + response payload
         safe_target_name = "actual_val" if len(target) > 10 else target
-        
+
+        # Define output CSV path
         csv_path = os.path.join(export_path, f"LR_Training_Result_v{model_version}.csv")
-        cols = []
+
+        csv_df = df_valid[indep + [target, "prediction"]].copy()
 
         if pin_series is not None:
-            cols.append("PIN")
+            csv_df.insert(0, "PIN", pin_series.iloc[df_valid.index].values)
 
-        cols.extend(indep)
-        cols.append(target)
-        cols.append("prediction")
-
-        df_valid[cols].to_csv(csv_path, index=False)
-
+        csv_df.to_csv(csv_path, index=False)
         print(f"✅ Exported cleaned CSV (excluded rows removed): {csv_path}")
 
         # 9️⃣ Export shapefile/ZIP (only trained rows)
@@ -652,13 +652,13 @@ async def train_linear_regression(
                 if columns_to_drop:
                     valid_gdf = valid_gdf.drop(columns=columns_to_drop, errors='ignore')
                 
-                # Add PIN
                 if pin_series is not None:
                     try:
-                        valid_gdf["PIN"] = pin_series.iloc[original_indices].values
-                        print(f"   ✅ Added PIN column")
+                        upsert_pin_field(valid_gdf, pin_series.iloc[original_indices].values, preferred_name="PIN")
+                        drop_duplicate_pin_fields(valid_gdf, keep_name="PIN")
+                        print("   ✅ PIN field updated (no duplicates)")
                     except Exception as e:
-                        print(f"   ⚠️ Could not add PIN: {e}")
+                        print(f"   ⚠️ Could not update PIN field: {e}")
                 
                 # ✅ ADD ACTUAL VALUES using safe field name
                 valid_gdf[safe_target_name] = df_valid[target].values
@@ -739,13 +739,13 @@ async def train_linear_regression(
                 if columns_to_drop:
                     valid_gdf = valid_gdf.drop(columns=columns_to_drop, errors='ignore')
                 
-                # Add PIN
                 if pin_series is not None:
                     try:
-                        valid_gdf["PIN"] = pin_series.iloc[original_indices].values
-                        print(f"   ✅ Added PIN column")
+                        upsert_pin_field(valid_gdf, pin_series.iloc[original_indices].values, preferred_name="PIN")
+                        drop_duplicate_pin_fields(valid_gdf, keep_name="PIN")
+                        print("   ✅ PIN field updated (no duplicates)")
                     except Exception as e:
-                        print(f"   ⚠️ Could not add PIN: {e}")
+                        print(f"   ⚠️ Could not update PIN field: {e}")
                 
                 # ✅ ADD ACTUAL VALUES using safe field name
                 # Now safe_target_name will be used without collision
@@ -827,15 +827,20 @@ async def train_linear_regression(
             
         print("📋 Creating training result preview...")
         preview_df = df_valid.copy()
-        
+
+        if pin_series is not None:
+            preview_df = preview_df.copy()
+            preview_df.insert(0, "PIN", pin_series.iloc[df_valid.index].values)
+
         preview_cols = []
-        if pin_series is not None and "PIN" in preview_df.columns:
+        if pin_series is not None:
             preview_cols.append("PIN")
-        
+
         preview_cols.extend(indep)
         preview_cols.append(target)
         preview_cols.append("prediction")
-        cama_preview = preview_df[preview_cols].head(100).to_dict('records')
+
+        cama_preview = preview_df[preview_cols].head(100).to_dict("records")
         print(f"   ✅ Created preview with {len(cama_preview)} rows")
 
         return {

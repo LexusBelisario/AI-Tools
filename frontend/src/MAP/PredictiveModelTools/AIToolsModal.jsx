@@ -270,55 +270,73 @@ export default function AIToolsModal({
     if (!dependentVar || !independentVars.length)
       return alert("Select dependent and independent variables.");
 
+    if (!userSchema || !selectedTable) {
+      alert("Please select a training table first.");
+      return;
+    }
+
+    // 1. Start Loading
     setTraining(true);
     setActiveTab("results");
 
-    const fdBase = new FormData();
+    try {
+      const fdBase = new FormData();
+      fdBase.append("schema", userSchema);
+      fdBase.append("table_name", selectedTable);
+      fdBase.append("dependent_var", dependentVar);
+      fdBase.append("independent_vars", JSON.stringify(independentVars));
+      fdBase.append("excluded_indices", JSON.stringify(excludedIndices));
 
-    if (!userSchema || !selectedTable) {
-      alert("Please select a training table first.");
-      setTraining(false);
-      return;
-    }
-    fdBase.append("schema", userSchema);
-    fdBase.append("table_name", selectedTable);
-    fdBase.append("dependent_var", dependentVar);
-    fdBase.append("independent_vars", JSON.stringify(independentVars));
-    fdBase.append("excluded_indices", JSON.stringify(excludedIndices));
+      const newResults = { lr: null, rf: null, xgb: null };
 
-    const newResults = { lr: null, rf: null, xgb: null };
+      const calls = selected.map(async (m) => {
+        const fd = new FormData();
+        for (const [key, val] of fdBase.entries()) fd.append(key, val);
 
-    const calls = selected.map(async (m) => {
-      const fd = new FormData();
-      for (const [key, val] of fdBase.entries()) fd.append(key, val);
+        const endpoint =
+          m === "lr"
+            ? "/ai-tools/train-lr/train"
+            : m === "rf"
+              ? "/ai-tools/train-rf/train"
+              : "/ai-tools/train-xgb/train";
 
-      const endpoint =
-        m === "lr"
-          ? "/ai-tools/train-lr/train"
-          : m === "rf"
-            ? "/ai-tools/train-rf/train"
-            : "/ai-tools/train-xgb/train";
+        try {
+          const res = await authFetch(`${API}${endpoint}`, {
+            method: "POST",
+            body: fd,
+          });
 
-      const res = await authFetch(`${API}${endpoint}`, {
-        method: "POST",
-        body: fd,
+          if (!res.ok) throw new Error(`Model ${m} failed`);
+
+          newResults[m] = await res.json();
+        } catch (err) {
+          console.error(`Error training ${m}:`, err);
+          // Optional: alert user specific model failed
+        }
       });
 
-      newResults[m] = await res.json();
-    });
+      // Wait for all API calls
+      await Promise.all(calls);
 
-    await Promise.all(calls);
-    setResults(newResults);
+      setResults(newResults);
 
-    const first = selected.find((m) => newResults[m]);
-    setActiveModelTab(first);
+      const first = selected.find((m) => newResults[m]);
+      if (first) {
+        setActiveModelTab(first);
+      }
 
-    console.log("🔄 Auto-saving training results to Common Table Database...");
-    await autoSaveToCommonDB(newResults, selected);
-
-    setTraining(false);
+      console.log(
+        "🔄 Auto-saving training results to Common Table Database..."
+      );
+      await autoSaveToCommonDB(newResults, selected);
+    } catch (error) {
+      console.error("Critical error during training sequence:", error);
+      alert("An error occurred during the training process.");
+    } finally {
+      // 2. STOP LOADING (This guarantees the loader disappears)
+      setTraining(false);
+    }
   };
-
   const autoSaveToCommonDB = async (results, trainedModels) => {
     for (const modelType of trainedModels) {
       const result = results[modelType];
