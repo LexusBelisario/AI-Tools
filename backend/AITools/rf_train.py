@@ -10,7 +10,7 @@ import os
 import json
 import zipfile
 from datetime import datetime
-
+from AITools.pdf_summary_generator import generate_model_summary_page
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -289,6 +289,18 @@ def export_rf_report_and_artifacts(
             except Exception as e:
                 print(f"      ⚠️ Could not create distribution for {col}: {e}")
                 continue
+            
+        if hasattr(model, "feature_importances_"):
+            generate_model_summary_page(
+                pp=pp,
+                model_type="Random Forest",
+                metrics=metrics,
+                features=feature_names,
+                importance_values=model.feature_importances_,
+                target_variable=target,
+                n_samples=len(y_train),
+                accent_color=accent
+            )
 
     print(f"   ✅ PDF report saved: {pdf_path}")
 

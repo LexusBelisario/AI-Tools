@@ -13,6 +13,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from datetime import datetime
 from scipy import stats
 from sqlalchemy import text
+from AITools.pdf_summary_generator import generate_model_summary_page
 from db import get_user_database_session
 from AITools.ai_utils import (
     extract_pin_column,
@@ -314,7 +315,12 @@ def export_full_report_and_artifacts(
         print(f"⚠️ Could not calculate coefficient t-tests: {e}")
         coef_ttests = None
 
-    metrics = {"R²": r2, "MSE": mse, "MAE": mae, "RMSE": rmse}
+    metrics = {
+        "r2": float(r2),
+        "mse": float(mse),
+        "mae": float(mae),
+        "rmse": float(rmse),
+    }
     
     accent = "#1e88e5"
     png_paths: Dict[str, str] = {}
@@ -484,6 +490,24 @@ def export_full_report_and_artifacts(
                         ha="center", va="center", fontsize=12)
                     pp.savefig(fig, facecolor="white")
                     plt.close(fig)
+                
+            pdf_metrics = {
+                "R²": metrics["r2"],
+                "RMSE": metrics["rmse"],
+                "MAE": metrics["mae"],
+                "MSE": metrics["mse"],
+            }
+                    
+            generate_model_summary_page(
+                pp=pp,
+                model_type="Linear Regression",
+                metrics=pdf_metrics,
+                features=independent_vars,
+                importance_values=importance,
+                target_variable=target,
+                n_samples=len(y_train),
+                accent_color=accent
+            )
 
     t_tests = {"residuals": residual_ttest, "coefficients": coef_ttests}
     return metrics, png_paths, t_tests, pdf_path
@@ -821,6 +845,9 @@ async def train_linear_regression(
 
         cama_preview = preview_df[preview_cols].head(100).to_dict("records")
         print(f"   ✅ Created preview with {len(cama_preview)} rows")
+        
+        metrics = {k: float(v) for k, v in metrics.items()}
+
 
         return {
             "model_version": model_version,

@@ -188,6 +188,13 @@ export default function AIToolsModal({
       }
 
       const data = await res.json();
+
+      console.log("📊 Preview data received:", {
+        rowCount: data.rows?.length,
+        totalRows: data.total,
+        sampleRow: data.rows?.[0],
+      });
+
       setPreviewRows(data.rows || []);
       setPreviewTotal(data.total || 0);
     } catch (err) {
@@ -418,10 +425,10 @@ export default function AIToolsModal({
   }, [userSchema]);
 
   useEffect(() => {
-    if (selectedTable) {
-      loadTableFields();
+    if (selectedTable && (dependentVar || independentVars.length > 0)) {
+      loadDatabasePreview(1); // Reset to page 1 when variables change
     }
-  }, [selectedTable]);
+  }, [dependentVar, independentVars, selectedTable]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -673,6 +680,7 @@ function AttributePreviewTable({
     return [...(dependentVar ? [dependentVar] : []), ...independentVars];
   }, [dependentVar, independentVars]);
 
+  // ✅ SORTING LOGIC: Sorts rows based on clicked column
   const sortedRows = React.useMemo(() => {
     if (!sortConfig.key || displayColumns.length === 0) return previewRows;
 
@@ -681,9 +689,9 @@ function AttributePreviewTable({
       const bVal = parseFloat(b[sortConfig.key]) || 0;
 
       if (sortConfig.direction === "asc") {
-        return aVal - bVal;
+        return aVal - bVal; // Low to High
       } else {
-        return bVal - aVal;
+        return bVal - aVal; // High to Low
       }
     });
   }, [previewRows, sortConfig, displayColumns]);
@@ -699,7 +707,9 @@ function AttributePreviewTable({
   if (displayColumns.length === 0) {
     return (
       <div className="blgf-ai-table-wrap empty">
-        <div>Select dependent and independent variables to preview data</div>
+        <div style={{ padding: "40px", textAlign: "center", color: "#94a3b8" }}>
+          👆 Select dependent and independent variables above to preview data
+        </div>
       </div>
     );
   }
@@ -707,7 +717,23 @@ function AttributePreviewTable({
   if (previewRows.length === 0 || sortedRows.length === 0) {
     return (
       <div className="blgf-ai-table-wrap empty">
-        <div>No preview data available</div>
+        <div style={{ padding: "40px", textAlign: "center", color: "#94a3b8" }}>
+          No data available in selected table
+        </div>
+      </div>
+    );
+  }
+
+  const availableColumns = displayColumns.filter((col) =>
+    sortedRows[0].hasOwnProperty(col),
+  );
+
+  if (availableColumns.length === 0) {
+    return (
+      <div className="blgf-ai-table-wrap empty">
+        <div style={{ padding: "40px", textAlign: "center", color: "#f59e0b" }}>
+          ⚠️ Selected variables not found in table data
+        </div>
       </div>
     );
   }
@@ -718,7 +744,7 @@ function AttributePreviewTable({
         <thead>
           <tr>
             <th style={{ width: "50px" }}>Use</th>
-            {displayColumns.map((col) => (
+            {availableColumns.map((col) => (
               <th
                 key={col}
                 className={`sortable ${
@@ -729,8 +755,15 @@ function AttributePreviewTable({
                     : ""
                 }`}
                 onClick={() => handleSort(col)}
+                style={{ cursor: "pointer", userSelect: "none" }}
               >
                 {col}
+                {/* ✅ VISUAL INDICATOR: Shows sort direction */}
+                {sortConfig.key === col && (
+                  <span style={{ marginLeft: "8px", fontSize: "12px" }}>
+                    {sortConfig.direction === "asc" ? "▲" : "▼"}
+                  </span>
+                )}
               </th>
             ))}
           </tr>
@@ -751,7 +784,7 @@ function AttributePreviewTable({
                   />
                 </td>
 
-                {displayColumns.map((col) => (
+                {availableColumns.map((col) => (
                   <td key={col}>
                     {row[col] !== undefined && row[col] !== null
                       ? String(row[col])
@@ -766,7 +799,6 @@ function AttributePreviewTable({
     </div>
   );
 }
-
 function InputsTabUI({
   fields,
   dependentVar,

@@ -6,6 +6,7 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 import tempfile, os, pickle, json, zipfile
+from AITools.pdf_summary_generator import generate_model_summary_page
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -306,7 +307,19 @@ def export_xgb_report_and_artifacts(
             except Exception as e:
                 print(f"      ⚠️ Could not create distribution for {col}: {e}")
                 continue
-    
+        
+        if importance is not None:
+            generate_model_summary_page(
+                pp=pp,
+                model_type="XGBoost",
+                metrics=metrics,
+                features=feature_names,
+                importance_values=importance,
+                target_variable=target,
+                n_samples=len(y_train),
+                accent_color=accent
+            )
+            
     print(f"   ✅ PDF report saved: {pdf_path}")
 
     # 5️⃣ Save model

@@ -1,48 +1,52 @@
 # =======================================================
-# 1️⃣ FRONTEND BUILD STAGE
+# 1) FRONTEND BUILD STAGE
 # =======================================================
 FROM node:20 AS frontend-builder
 
-# Set working directory
 WORKDIR /app/frontend
 
-# Copy package files
+# Install deps
 COPY frontend/package*.json ./
-
-# Install dependencies
 RUN npm install
 
-# Copy frontend source code
+# Copy source then build
 COPY frontend/ .
-
-# Build with root base path
 RUN npm run build --base=/
 
 
 # =======================================================
-# 2️⃣ BACKEND STAGE
+# 2) BACKEND STAGE
 # =======================================================
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install required system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc libpq-dev gdal-bin python3-gdal && \
-    rm -rf /var/lib/apt/lists/*
+# System deps for geopandas/gdal/psycopg2
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    libpq-dev \
+    gdal-bin \
+    python3-gdal \
+    libgdal-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy backend requirements and install dependencies
-COPY backend/requirements.txt .
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Install Python deps
+COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend source code
+# Copy backend app code into /app
 COPY backend/ .
 
-# Copy built frontend output into static folder
+# Put frontend build into backend static folder (matches main.py mount)
 COPY --from=frontend-builder /app/frontend/dist ./static
 
-# Expose FastAPI port
-EXPOSE 8000
+# Data dir for docker-safe file paths (DATA_DIR=/data)
+RUN mkdir -p /data
 
-# Start FastAPI
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8001
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

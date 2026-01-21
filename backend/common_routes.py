@@ -18,6 +18,55 @@ from common_db_runtime import (
 router = APIRouter(prefix="/common", tags=["common"])
 
 
+# =========================
+# Docker-safe file base dir
+# =========================
+DATA_DIR = os.getenv("DATA_DIR", "/data").strip() or "/data"
+
+
+def _safe_join_data_dir(p: str) -> str:
+    """
+    Docker-safe path handling with local development support.
+    
+    Development mode: Accept absolute paths (Windows/Linux)
+    Docker mode: Only accept paths inside DATA_DIR
+    """
+    if p is None:
+        raise HTTPException(status_code=400, detail="Missing path")
+
+    p = str(p).strip()
+    if not p:
+        raise HTTPException(status_code=400, detail="Empty path")
+
+    # 🔥 FIX: Check if this is a valid absolute path on the current system
+    # If it exists and is absolute, allow it (local development mode)
+    if os.path.isabs(p) and os.path.exists(p):
+        print(f"✅ Accepting absolute path (local dev mode): {p}")
+        return p
+
+    # If it's an absolute path but doesn't exist, it might be a mistake
+    if os.path.isabs(p) and not os.path.exists(p):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Absolute path does not exist: {p}"
+        )
+
+    # Otherwise, treat as relative path inside DATA_DIR (Docker mode)
+    base = os.path.normpath(DATA_DIR)
+    full = os.path.normpath(os.path.join(base, p))
+
+    # Simple safety: dapat nasa loob parin ng DATA_DIR
+    try:
+        common = os.path.commonpath([base, full])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    if common != base:
+        raise HTTPException(status_code=400, detail="Invalid path (outside DATA_DIR)")
+
+    return full
+
+
 def _extract_bearer_token(authorization: str) -> str:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
@@ -190,6 +239,7 @@ async def save_prediction_results_to_common_db(
         set_request_context(ctx)
         db = get_request_session()
 
+        shapefile_path = _safe_join_data_dir(shapefile_path)
         shapefile_path_obj = Path(shapefile_path)
         if not shapefile_path_obj.exists():
             raise HTTPException(status_code=404, detail=f"Shapefile not found: {shapefile_path}")
@@ -245,6 +295,7 @@ async def save_to_gis_database(
     try:
         db = get_user_database_session()
 
+        shapefile_path = _safe_join_data_dir(shapefile_path)
         shapefile_path_obj = Path(shapefile_path)
         if not shapefile_path_obj.exists():
             raise HTTPException(status_code=404, detail=f"Shapefile not found: {shapefile_path}")
@@ -322,6 +373,7 @@ async def save_trained_model_to_common_db(
     try:
         schema = _validate_ident(ctx["schema"], "schema")
 
+        model_path = _safe_join_data_dir(model_path)
         p = Path(model_path)
         if not p.exists():
             raise HTTPException(status_code=404, detail=f"Model not found: {model_path}")
@@ -434,6 +486,17 @@ async def auto_save_training_results(
         db = get_request_session()
         schema = _validate_ident(ctx["schema"], "schema")
 
+        # 🔥 FIX: Use the improved path handler
+        print(f"🔍 Validating paths...")
+        print(f"   Model path (raw): {model_path}")
+        print(f"   Shapefile path (raw): {shapefile_path}")
+        
+        model_path = _safe_join_data_dir(model_path)
+        shapefile_path = _safe_join_data_dir(shapefile_path)
+        
+        print(f"   ✅ Model path (validated): {model_path}")
+        print(f"   ✅ Shapefile path (validated): {shapefile_path}")
+
         # Part 1: model save
         model_saved_id = None
         if model_path and os.path.exists(model_path):
@@ -483,6 +546,7 @@ async def auto_save_training_results(
 
             model_saved_id = int(row[0]) if row else None
             db.commit()
+            print(f"✅ Saved model to database (ID: {model_saved_id})")
 
         # Part 2: predictions save
         predictions_saved = False
@@ -490,6 +554,7 @@ async def auto_save_training_results(
         predictions_table = None
 
         if shapefile_path and os.path.exists(shapefile_path):
+            print(f"📊 Loading shapefile for predictions...")
             gdf = gpd.read_file(shapefile_path)
             if not gdf.empty:
                 predictions_table = f"training_predictions_{model_type}_v{int(model_version)}"
@@ -503,6 +568,7 @@ async def auto_save_training_results(
                 db.commit()
                 predictions_saved = True
                 prediction_count = len(gdf)
+                print(f"✅ Saved {prediction_count} predictions to {predictions_table}")
 
         return {
             "success": True,
@@ -516,6 +582,9 @@ async def auto_save_training_results(
         }
 
     except Exception as e:
+        import traceback
+        print("❌ AUTO-SAVE ERROR:")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Auto-save failed: {str(e)}")
 
     finally:
