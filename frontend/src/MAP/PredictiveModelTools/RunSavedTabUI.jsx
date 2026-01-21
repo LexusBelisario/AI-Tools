@@ -6,46 +6,108 @@ export default function RunSavedTabUI({
   userSchema,
   setLoadingMap,
   setLoadingFieldName,
+  token = "",
+  userDb = null,
 }) {
   // === MODEL INPUT STATE ===
-  const [modelSource, setModelSource] = useState("upload"); // "upload" or "db"
+  const [modelSource, setModelSource] = useState("db"); // "upload" or "db"
   const [modelFile, setModelFile] = useState(null);
   const [availableModels, setAvailableModels] = useState([]);
   const [selectedDbModel, setSelectedDbModel] = useState("");
 
   // === DATA INPUT STATE ===
   const [inputSource, setInputSource] = useState("db"); // "db" or "file"
+  const [tableName, setTableName] = useState("LandParcel");
   const [shapefiles, setShapefiles] = useState([]);
   const [zipFile, setZipFile] = useState(null);
 
   // === UI STATE ===
   const [loading, setLoading] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  // Load models from DB when "Database" source is selected
+  const decodeJwtPayload = (tok) => {
+    try {
+      const part = tok.split(".")[1];
+      const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+      const json = decodeURIComponent(
+        atob(b64)
+          .split("")
+          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join(""),
+      );
+      return JSON.parse(json);
+    } catch {
+      return {};
+    }
+  };
+
+  // fallback kung hindi pinasa ang userDb
+  const tokenPayload = decodeJwtPayload(token);
+  const resolvedUserDb =
+    userDb ||
+    tokenPayload.db ||
+    tokenPayload.db_name ||
+    tokenPayload.dbname ||
+    tokenPayload.prov_dbname ||
+    null;
+
+  // Auth helper
+  const authFetch = (url, options = {}) => {
+    const headers = { ...(options.headers || {}) };
+
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (userSchema) headers["X-Target-Schema"] = userSchema;
+    if (resolvedUserDb) headers["X-Target-DB"] = resolvedUserDb;
+
+    return fetch(url, { ...options, headers });
+  };
+
+  const loadAvailableModels = async () => {
+    if (!token) {
+      setError("Authentication token is missing. Please reconnect.");
+      setAvailableModels([]);
+      return;
+    }
+    if (!userSchema) {
+      setError("No schema selected. Please connect to Common Database first.");
+      setAvailableModels([]);
+      return;
+    }
+
+    setLoadingModels(true);
+    setError(null);
+
+    try {
+      const res = await authFetch(`${API}/ai-tools/list-models`, {
+        method: "GET",
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        setAvailableModels([]);
+        setError(`Failed to load models: ${errorText}`);
+        return;
+      }
+
+      const data = await res.json();
+      setAvailableModels(data.models || []);
+    } catch (err) {
+      setAvailableModels([]);
+      setError(`Error loading models: ${err.message}`);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  // Load models when DB source is selected
   useEffect(() => {
     if (modelSource === "db") {
       loadAvailableModels();
     }
-  }, [modelSource]);
-
-  const loadAvailableModels = async () => {
-    try {
-      // NOTE: Ensure this endpoint exists in your backend
-      const res = await fetch(`${API}/ai-tools/list-models`, {
-        method: "GET", // or POST depending on your backend
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAvailableModels(data.models || []);
-      } else {
-        console.error("Failed to load models");
-      }
-    } catch (err) {
-      console.error("Error loading models:", err);
-    }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelSource, userSchema, token, resolvedUserDb]);
 
   const handleModelFileChange = (e) => {
     const file = e.target.files[0];
@@ -71,7 +133,11 @@ export default function RunSavedTabUI({
     setError(null);
     setResult(null);
 
-    // Validation
+    if (!token) {
+      setError("Authentication token is missing. Please reconnect.");
+      return;
+    }
+
     if (modelSource === "upload" && !modelFile) {
       setError("Please upload a model file (.pkl)");
       return;
@@ -82,7 +148,7 @@ export default function RunSavedTabUI({
     }
 
     if (inputSource === "db" && !userSchema) {
-      setError("No schema selected. Please select a region first.");
+      setError("No schema selected. Please connect to Common Database first.");
       return;
     }
     if (inputSource === "file" && shapefiles.length === 0 && !zipFile) {
@@ -95,18 +161,18 @@ export default function RunSavedTabUI({
     try {
       const formData = new FormData();
 
-      // Append Model Info
+      // model info
       formData.append("model_source", modelSource);
       if (modelSource === "upload") {
         formData.append("model_file", modelFile);
       } else {
-        formData.append("model_name", selectedDbModel);
+        formData.append("model_id", selectedDbModel);
       }
 
-      // Append Data Info
+      // data info
       if (inputSource === "db") {
         formData.append("schema", userSchema);
-        formData.append("table_name", "JoinedTable");
+        formData.append("table_name", tableName);
       } else {
         if (zipFile) {
           formData.append("zip_file", zipFile);
@@ -117,7 +183,7 @@ export default function RunSavedTabUI({
         }
       }
 
-      const response = await fetch(`${API}/ai-tools/run-saved-model`, {
+      const response = await authFetch(`${API}/ai-tools/run-saved-model`, {
         method: "POST",
         body: formData,
       });
@@ -125,13 +191,11 @@ export default function RunSavedTabUI({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to run model");
+        throw new Error(data.error || data.detail || "Failed to run model");
       }
 
-      console.log("✅ Run saved model response:", data);
       setResult(data);
     } catch (err) {
-      console.error("Run model error:", err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -145,16 +209,32 @@ export default function RunSavedTabUI({
     setZipFile(null);
     setResult(null);
     setError(null);
+    setTableName("LandParcel");
   };
 
   return (
     <div className="blgf-ai-content">
       <div className="blgf-ai-data-grid" style={{ gridTemplateColumns: "1fr" }}>
-        {/* === STEP 1: SELECT MODEL === */}
+        {/* STEP 1 */}
         <div className="blgf-ai-block">
           <div className="blgf-ai-label">1. Select Model Source</div>
 
           <div className="blgf-ai-models-grid" style={{ marginBottom: "20px" }}>
+            <div
+              className={`blgf-ai-model-card ${modelSource === "db" ? "active" : ""}`}
+              onClick={() => setModelSource("db")}
+            >
+              <div className="blgf-ai-model-card-header">
+                <span className="blgf-ai-model-name">From Common Database</span>
+                <div className="blgf-ai-checkbox-indicator">
+                  {modelSource === "db" && "✓"}
+                </div>
+              </div>
+              <div className="blgf-ai-model-desc">
+                Select a saved model from the Common Table Database.
+              </div>
+            </div>
+
             <div
               className={`blgf-ai-model-card ${modelSource === "upload" ? "active" : ""}`}
               onClick={() => setModelSource("upload")}
@@ -169,26 +249,44 @@ export default function RunSavedTabUI({
                 Upload a local .pkl model file.
               </div>
             </div>
-
-            <div
-              className={`blgf-ai-model-card ${modelSource === "db" ? "active" : ""}`}
-              onClick={() => setModelSource("db")}
-            >
-              <div className="blgf-ai-model-card-header">
-                <span className="blgf-ai-model-name">From Database</span>
-                <div className="blgf-ai-checkbox-indicator">
-                  {modelSource === "db" && "✓"}
-                </div>
-              </div>
-              <div className="blgf-ai-model-desc">
-                Select a saved model from the server.
-              </div>
-            </div>
           </div>
 
-          {/* Model Selection UI based on Source */}
           <div className="blgf-ai-card">
-            {modelSource === "upload" ? (
+            {modelSource === "db" ? (
+              <>
+                <div className="blgf-ai-label">Select Saved Model</div>
+
+                {loadingModels ? (
+                  <div className="blgf-ai-helper-text">Loading models...</div>
+                ) : (
+                  <>
+                    <select
+                      value={selectedDbModel}
+                      onChange={(e) => setSelectedDbModel(e.target.value)}
+                      className="blgf-ai-select"
+                      disabled={availableModels.length === 0}
+                    >
+                      <option value="">-- Select a model --</option>
+                      {availableModels.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.display_name}
+                        </option>
+                      ))}
+                    </select>
+
+                    {availableModels.length === 0 && !loadingModels && (
+                      <div
+                        className="blgf-ai-helper-text error"
+                        style={{ marginTop: "10px" }}
+                      >
+                        No saved models found in Common Database. Train a model
+                        first.
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
               <>
                 <div className="blgf-ai-label">Upload Model (.pkl)</div>
                 <input
@@ -203,29 +301,7 @@ export default function RunSavedTabUI({
                     className="blgf-ai-filelist"
                     style={{ marginTop: "10px" }}
                   >
-                    <span>📦 {modelFile.name}</span>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="blgf-ai-label">Select Saved Model</div>
-                <select
-                  value={selectedDbModel}
-                  onChange={(e) => setSelectedDbModel(e.target.value)}
-                  className="blgf-ai-select"
-                  disabled={availableModels.length === 0}
-                >
-                  <option value="">-- Select a model --</option>
-                  {availableModels.map((m, i) => (
-                    <option key={i} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-                {availableModels.length === 0 && (
-                  <div className="blgf-ai-helper-text">
-                    {loading ? "Loading models..." : "No saved models found."}
+                    <span>{modelFile.name}</span>
                   </div>
                 )}
               </>
@@ -233,7 +309,7 @@ export default function RunSavedTabUI({
           </div>
         </div>
 
-        {/* === STEP 2: SELECT DATA SOURCE === */}
+        {/* STEP 2 */}
         <div className="blgf-ai-block">
           <div className="blgf-ai-label">2. Select Data Source</div>
           <div className="blgf-ai-models-grid">
@@ -243,14 +319,15 @@ export default function RunSavedTabUI({
             >
               <div className="blgf-ai-model-card-header">
                 <span className="blgf-ai-model-name">
-                  Database (JoinedTable)
+                  Common Database (LandParcel)
                 </span>
                 <div className="blgf-ai-checkbox-indicator">
                   {inputSource === "db" && "✓"}
                 </div>
               </div>
               <div className="blgf-ai-model-desc">
-                Use the existing 'JoinedTable' in the selected schema.
+                Use the existing 'LandParcel' table in the Common Database
+                schema.
               </div>
             </div>
 
@@ -271,24 +348,39 @@ export default function RunSavedTabUI({
           </div>
         </div>
 
-        {/* === STEP 3: CONTEXT SPECIFIC INPUTS === */}
+        {/* STEP 3 */}
         {inputSource === "db" && (
           <div className="blgf-ai-block">
             <div
               className="blgf-ai-schema-tag"
               style={{ marginBottom: "10px", display: "inline-block" }}
             >
-              📍 Schema: {userSchema || "None"}
+              Schema: {userSchema || "None"}
             </div>
 
             {!userSchema ? (
               <div className="blgf-ai-helper-text error">
-                ⚠️ Please select a region/schema from the main map first.
+                Please connect to Common Database first.
               </div>
             ) : (
-              <div className="blgf-ai-helper-text" style={{ color: "#4ade80" }}>
-                ✅ Ready to process JoinedTable
-              </div>
+              <>
+                <div
+                  className="blgf-ai-helper-text"
+                  style={{ marginBottom: "10px" }}
+                >
+                  Ready to process from Common Database
+                </div>
+
+                <div className="blgf-ai-label">Select Table</div>
+                <select
+                  value={tableName}
+                  onChange={(e) => setTableName(e.target.value)}
+                  className="blgf-ai-select"
+                >
+                  <option value="LandParcel">LandParcel</option>
+                  <option value="Training_Table">Training_Table</option>
+                </select>
+              </>
             )}
           </div>
         )}
@@ -313,16 +405,6 @@ export default function RunSavedTabUI({
                   className="blgf-ai-select"
                   style={{ marginTop: "5px" }}
                 />
-                {shapefiles.length > 0 && (
-                  <div
-                    className="blgf-ai-filelist"
-                    style={{ marginTop: "10px" }}
-                  >
-                    {shapefiles.map((f, i) => (
-                      <div key={i}>📄 {f.name}</div>
-                    ))}
-                  </div>
-                )}
               </div>
 
               <div>
@@ -334,32 +416,22 @@ export default function RunSavedTabUI({
                   className="blgf-ai-select"
                   style={{ marginTop: "5px" }}
                 />
-                {zipFile && (
-                  <div
-                    className="blgf-ai-filelist"
-                    style={{ marginTop: "10px" }}
-                  >
-                    <div>🤐 {zipFile.name}</div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* === ERROR MESSAGE === */}
         {error && (
           <div className="blgf-ai-block">
             <div
               className="blgf-ai-helper-text error"
               style={{ fontSize: "14px" }}
             >
-              ⚠️ {error}
+              {error}
             </div>
           </div>
         )}
 
-        {/* === RESULTS SECTION === */}
         {result && (
           <div className="blgf-ai-result" style={{ marginTop: "20px" }}>
             <div className="blgf-ai-result-header">
@@ -369,6 +441,9 @@ export default function RunSavedTabUI({
             <div className="blgf-ai-stats-row">
               <div className="blgf-ai-stat-badge">
                 <strong>Records Processed:</strong> {result.record_count}
+              </div>
+              <div className="blgf-ai-stat-badge">
+                <strong>Model Type:</strong> {result.model_type?.toUpperCase()}
               </div>
             </div>
 
@@ -384,7 +459,7 @@ export default function RunSavedTabUI({
                         target="_blank"
                         rel="noreferrer"
                       >
-                        📄 Download PDF Report
+                        Download PDF Report
                       </a>
                     </li>
                   )}
@@ -395,7 +470,7 @@ export default function RunSavedTabUI({
                         target="_blank"
                         rel="noreferrer"
                       >
-                        🗺️ Download Predicted Shapefile (.zip)
+                        Download Predicted Shapefile (.zip)
                       </a>
                     </li>
                   )}
@@ -409,7 +484,7 @@ export default function RunSavedTabUI({
                         setLoadingFieldName(
                           result.actual_field
                             ? result.actual_field.toUpperCase()
-                            : "PREDICTION"
+                            : "PREDICTION",
                         );
                         setLoadingMap(true);
 
@@ -419,7 +494,7 @@ export default function RunSavedTabUI({
 
                         onShowMap({
                           url,
-                          label: `Run Saved Model Result`,
+                          label: "Run Saved Model Result",
                           predictionField:
                             result.prediction_field || "prediction",
                           actualField: result.actual_field || null,
@@ -435,18 +510,6 @@ export default function RunSavedTabUI({
                       Visualize on Map
                     </button>
                   )}
-
-                  {result.downloads?.shapefile_raw && (
-                    <button
-                      className="blgf-ai-btn-secondary wide"
-                      onClick={() => {
-                        console.log("Saving to DB logic here...");
-                        // Trigger save modal logic if props are passed
-                      }}
-                    >
-                      Save to Database
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
@@ -454,7 +517,6 @@ export default function RunSavedTabUI({
         )}
       </div>
 
-      {/* === FOOTER ACTION BUTTONS === */}
       <div className="blgf-ai-footer">
         <div style={{ display: "flex", gap: "10px" }}>
           <button

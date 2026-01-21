@@ -4,6 +4,8 @@ import os
 import json
 from datetime import datetime
 import re
+import io
+import joblib
 
 from common_db_runtime import (
     resolve_common_context_from_token,
@@ -213,7 +215,7 @@ async def save_trained_model_local(
 
         return {
             "success": True,
-            "message": f"Saved model to local DB table {schema}.ai_trained_models",
+            "message": f"Saved model to Common DB table {schema}.ai_trained_models",
             "schema": schema,
             "id": new_id,
             "model_version": int(model_version),
@@ -231,6 +233,10 @@ async def list_models(
     x_target_schema: str = Header(default="", alias="X-Target-Schema"),
     x_target_db: str = Header(default="", alias="X-Target-DB"),
 ):
+    """
+    List available models from Common Database ai_trained_models table.
+    Returns model details including ID for fetching.
+    """
     token = _extract_bearer_token(authorization)
 
     ctx = resolve_common_context_from_token(
@@ -246,6 +252,7 @@ async def list_models(
         schema = _validate_ident(ctx["schema"], "schema")
         db = get_request_session()
 
+        # Check if table exists
         exists = db.execute(
             text('''
                 SELECT 1
@@ -258,14 +265,125 @@ async def list_models(
         if not exists:
             return {"models": []}
 
+        # Fetch model details
         rows = db.execute(text(f'''
-            SELECT model_name
+            SELECT 
+                id,
+                model_name,
+                model_type,
+                model_version,
+                dependent_var,
+                features,
+                created_at
             FROM "{schema}"."ai_trained_models"
             ORDER BY created_at DESC
             LIMIT 200
         ''')).fetchall()
 
-        return {"models": [r[0] for r in rows]}
+        models = []
+        for row in rows:
+            model_id, name, mtype, version, dep_var, features_json, created = row
+            
+            # Parse features if available
+            features = None
+            if features_json:
+                try:
+                    features = json.loads(features_json) if isinstance(features_json, str) else features_json
+                except:
+                    features = features_json
+
+            models.append({
+                "id": model_id,
+                "name": name,
+                "type": mtype,
+                "version": version,
+                "dependent_var": dep_var,
+                "features": features,
+                "created_at": created.isoformat() if created else None,
+                "display_name": f"{name} (v{version}) - {mtype.upper()}"
+            })
+
+        return {"models": models}
+
+    finally:
+        if db is not None:
+            db.close()
+        clear_request_context()
+
+
+@router.get("/get-model-blob/{model_id}")
+async def get_model_blob(
+    model_id: int,
+    authorization: str = Header(default=""),
+    x_target_schema: str = Header(default="", alias="X-Target-Schema"),
+    x_target_db: str = Header(default="", alias="X-Target-DB"),
+):
+    """
+    Fetch model BLOB from Common Database by ID.
+    Returns the pickled model bundle in memory.
+    """
+    token = _extract_bearer_token(authorization)
+
+    ctx = resolve_common_context_from_token(
+        token,
+        db_override=(x_target_db or None),
+        schema_override=(x_target_schema or None),
+    )
+
+    set_request_context(ctx)
+    db = None
+
+    try:
+        schema = _validate_ident(ctx["schema"], "schema")
+        db = get_request_session()
+
+        row = db.execute(
+            text(f'''
+                SELECT 
+                    model_blob,
+                    model_name,
+                    model_type,
+                    model_version,
+                    dependent_var,
+                    features
+                FROM "{schema}"."ai_trained_models"
+                WHERE id = :model_id
+            '''),
+            {"model_id": model_id}
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Model ID {model_id} not found")
+
+        blob, name, mtype, version, dep_var, features_json = row
+
+        if not blob:
+            raise HTTPException(status_code=404, detail="Model blob is empty")
+
+        # Parse features
+        features = None
+        if features_json:
+            try:
+                features = json.loads(features_json) if isinstance(features_json, str) else features_json
+            except:
+                features = features_json
+
+        # Load the model from blob
+        try:
+            model_bundle = joblib.load(io.BytesIO(blob))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+        return {
+            "success": True,
+            "model_id": model_id,
+            "model_name": name,
+            "model_type": mtype,
+            "model_version": version,
+            "dependent_var": dep_var,
+            "features": features or model_bundle.get("features", []),
+            "blob_size": len(blob),
+        }
 
     finally:
         if db is not None:

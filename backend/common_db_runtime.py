@@ -122,6 +122,31 @@ def _lookup_db_by_province_code(prov_code: str) -> Optional[str]:
         print(f"Warning: Could not lookup database for {prov_code}: {e}")
         return None
 
+def _list_db_candidates_by_province_code(prov_code: str) -> list[str]:
+    """
+    Returns all DB names matching province code.
+    Example: PH04021 -> ['PH04021_Cavite', 'PH04021_OtherCopy']
+    """
+    try:
+        host = _env("COMMON_DB_HOST")
+        port = _env("COMMON_DB_PORT", "5432")
+        user = _env("COMMON_DB_USER")
+        password = _env("COMMON_DB_PASSWORD")
+        sslmode = _env("COMMON_DB_SSLMODE", "require")
+
+        url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/postgres?sslmode={sslmode}"
+        temp_engine = create_engine(url, pool_pre_ping=True)
+
+        with temp_engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT datname FROM pg_database WHERE datname LIKE :pattern ORDER BY datname"),
+                {"pattern": f"{prov_code}_%"},
+            )
+            return [row[0] for row in result]
+    except Exception as e:
+        print(f"Warning: Could not list databases for {prov_code}: {e}")
+        return []
+
 
 def _lookup_schema_by_mun_code(db_name: str, mun_code: str) -> Optional[str]:
     """
@@ -179,18 +204,39 @@ def resolve_common_context_from_token(
     if db_override:
         db_name = db_override
     else:
-        db_name = _lookup_db_by_province_code(prov_code)
-        if not db_name:
+        candidates = _list_db_candidates_by_province_code(prov_code)
+        if not candidates:
             raise HTTPException(
                 status_code=401,
                 detail=f"No database found matching province code '{prov_code}'. Check COMMON_DB connection.",
             )
+            
+        chosen_db = None
+        chosen_schema = None
+        
+        for cand_db in candidates:
+            cand_schema = _lookup_schema_by_mun_code(cand_db, mun_code)
+            if cand_schema:
+                chosen_db = cand_db
+                chosen_schema = cand_schema
+                break
+        
+        if chosen_db:
+            db_name = chosen_db
+            # if schema_override not provided, use the found one
+            if not schema_override:
+                schema = chosen_schema
+        else:
+            # fallback: first candidate
+            db_name = candidates[0]
 
     # Lookup actual schema name by municipal code
     if schema_override:
         schema = schema_override
     else:
-        schema = _lookup_schema_by_mun_code(db_name, mun_code)
+        # if schema already set from candidate scan, keep it
+        if not locals().get("schema"):
+            schema = _lookup_schema_by_mun_code(db_name, mun_code)
         if not schema:
             raise HTTPException(
                 status_code=401,

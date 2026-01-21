@@ -68,7 +68,7 @@ export default function AIToolsModal({
         atob(b64)
           .split("")
           .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-          .join("")
+          .join(""),
       );
       return JSON.parse(json);
     } catch {
@@ -259,7 +259,7 @@ export default function AIToolsModal({
 
   const toggleExcludedRow = (index) => {
     setExcludedIndices((prev) =>
-      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index],
     );
   };
 
@@ -326,7 +326,7 @@ export default function AIToolsModal({
       }
 
       console.log(
-        "🔄 Auto-saving training results to Common Table Database..."
+        "🔄 Auto-saving training results to Common Table Database...",
       );
       await autoSaveToCommonDB(newResults, selected);
     } catch (error) {
@@ -344,7 +344,7 @@ export default function AIToolsModal({
 
       try {
         console.log(
-          `📤 Auto-saving ${modelType.toUpperCase()} to Common DB...`
+          `📤 Auto-saving ${modelType.toUpperCase()} to Common DB...`,
         );
 
         const formData = new FormData();
@@ -363,7 +363,7 @@ export default function AIToolsModal({
             result.downloads.shapefile_raw ||
             (result.downloads.shapefile.includes("?file=")
               ? decodeURIComponent(
-                  result.downloads.shapefile.split("?file=")[1]
+                  result.downloads.shapefile.split("?file=")[1],
                 )
               : result.downloads.shapefile);
           formData.append("shapefile_path", shpPath);
@@ -373,7 +373,7 @@ export default function AIToolsModal({
         formData.append("model_version", result.model_version || 1);
         formData.append(
           "dependent_var",
-          result.dependent_var || result.original_dependent_var || ""
+          result.dependent_var || result.original_dependent_var || "",
         );
         formData.append("features_json", JSON.stringify(result.features || []));
         formData.append("metrics_json", JSON.stringify(result.metrics || {}));
@@ -386,14 +386,14 @@ export default function AIToolsModal({
               "X-Target-Schema": userSchema,
             },
             body: formData,
-          }
+          },
         );
 
         if (response.ok) {
           const data = await response.json();
           console.log(
             `✅ ${modelType.toUpperCase()} auto-saved to Common DB:`,
-            data
+            data,
           );
         } else {
           const error = await response.text();
@@ -633,6 +633,8 @@ export default function AIToolsModal({
             userSchema={userSchema}
             setLoadingMap={setLoadingMap}
             setLoadingFieldName={setLoadingFieldName}
+            token={token}
+            userDb={userDb}
           />
         )}
       </div>
@@ -900,7 +902,7 @@ function InputsTabUI({
                     checked={independentVars.includes(f)}
                     onChange={() =>
                       setIndependentVars((p) =>
-                        p.includes(f) ? p.filter((x) => x !== f) : [...p, f]
+                        p.includes(f) ? p.filter((x) => x !== f) : [...p, f],
                       )
                     }
                   />
@@ -926,7 +928,7 @@ function InputsTabUI({
               className="blgf-ai-btn-text"
               onClick={() =>
                 setExcludedIndices(
-                  Array.from({ length: previewTotal }, (_, i) => i)
+                  Array.from({ length: previewTotal }, (_, i) => i),
                 )
               }
             >
@@ -1364,7 +1366,7 @@ function PlotsSection({ modelType, result }) {
                 Math.max(...y),
                 Math.min(...y),
                 Math.max(...y),
-                "Actual Value"
+                "Actual Value",
               ),
             ]}
             layout={{

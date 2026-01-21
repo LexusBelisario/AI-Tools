@@ -694,27 +694,6 @@ async def train_linear_regression(
                     for f in os.listdir(shp_pred_dir):
                         z.write(os.path.join(shp_pred_dir, f), f)
                 print(f"   ✅ ZIP created: {zip_out}")
-                
-                # Save to database (optional)
-                try:
-                    predicted_table = f"{table_name}_LR_Predicted"
-                    provincial_code = get_provincial_code_from_schema(schema)
-                    db_session_save = get_user_database_session(provincial_code)
-                    engine_save = db_session_save.get_bind()
-                    
-                    valid_gdf.to_postgis(
-                        name=predicted_table,
-                        con=engine_save,
-                        schema=schema,
-                        if_exists="replace",
-                        index=False,
-                    )
-                    
-                    engine_save.dispose()
-                    db_session_save.close()
-                    print(f"   ✅ Saved to {schema}.{predicted_table}")
-                except Exception as e:
-                    print(f"   ⚠️ Could not save to DB: {e}")
             
             elif file_gdf is not None:
                 # ============ FILE MODE ============
