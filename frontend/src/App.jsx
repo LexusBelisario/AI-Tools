@@ -13,14 +13,19 @@ export default function App() {
     console.log("🗺️ Show on map:", payload);
   };
 
-  // Change this if GIS runs on a different origin
-  const GIS_ORIGIN = import.meta.env.VITE_GIS_ORIGIN || "http://localhost:5173";
+  // Comma-separated list of trusted origins that can send tokens.
+  // Set VITE_TRUSTED_ORIGINS in .env to add more, e.g.:
+  //   VITE_TRUSTED_ORIGINS=http://localhost:5173,https://partner-app.example.com
+  const TRUSTED_ORIGINS = (
+    import.meta.env.VITE_TRUSTED_ORIGINS || "http://localhost:5173"
+  ).split(",").map((o) => o.trim());
+
   const API = import.meta.env.VITE_API_URL || "http://localhost:8001";
 
   useEffect(() => {
     const handler = async (event) => {
-      // Security: only accept messages from GIS
-      if (event.origin !== GIS_ORIGIN) {
+      // Security: only accept messages from trusted origins
+      if (!TRUSTED_ORIGINS.includes(event.origin)) {
         console.warn("⚠️ Message from untrusted origin:", event.origin);
         return;
       }
@@ -31,17 +36,16 @@ export default function App() {
       if (type === "AI_TOOLS_AUTH") {
         if (!receivedToken) return;
 
-        console.log("✅ Received token from GIS");
+        console.log("✅ Received token from:", event.origin);
         localStorage.setItem("access_token", receivedToken);
         setToken(receivedToken);
-        setShouldDisconnect(false); // Reset disconnect flag
+        setShouldDisconnect(false);
       }
 
       // Handle disconnect request
       if (type === "AI_TOOLS_DISCONNECT") {
-        console.log("🔌 Disconnect requested by GIS");
+        console.log("🔌 Disconnect requested by:", event.origin);
 
-        // Call disconnect API
         try {
           const currentToken = localStorage.getItem("access_token");
           if (currentToken) {
@@ -62,16 +66,15 @@ export default function App() {
           console.error("❌ Disconnect error:", err);
         }
 
-        // Clear local state
         localStorage.removeItem("access_token");
         setToken("");
-        setShouldDisconnect(true); // Signal to child components
+        setShouldDisconnect(true);
       }
     };
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [GIS_ORIGIN, API]);
+  }, [TRUSTED_ORIGINS, API]);
 
   return (
     <Routes>
@@ -84,7 +87,7 @@ export default function App() {
             onClose={() => setPanelOpen(false)}
             onShowMap={handleShowMap}
             token={token}
-            shouldDisconnect={shouldDisconnect} // Pass disconnect signal
+            shouldDisconnect={shouldDisconnect}
           />
         }
       />

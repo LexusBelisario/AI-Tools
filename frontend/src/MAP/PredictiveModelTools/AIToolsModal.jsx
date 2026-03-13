@@ -78,8 +78,9 @@ export default function AIToolsModal({
 
   const tokenPayload = decodeJwtPayload(token);
 
-  // try to find db in token payload (adjust keys depending on your GIS token)
+  // Read database name from token (supports new generic format + legacy keys)
   const userDb =
+    tokenPayload.province_access ||
     tokenPayload.db ||
     tokenPayload.db_name ||
     tokenPayload.dbname ||
@@ -132,7 +133,7 @@ export default function AIToolsModal({
     setCommonBusy(true);
     setCommonError("");
 
-    console.log("🔄 Connecting with schema:", externalSchema); // 👈 ADD THIS
+    console.log("🔄 Connecting with schema:", externalSchema);
 
     try {
       const res = await authFetch(`${API}/common/connect`, { method: "POST" });
@@ -149,7 +150,7 @@ export default function AIToolsModal({
         throw new Error(data?.detail || "Connect failed");
       }
 
-      console.log("✅ Connected to:", data.context); // 👈 ADD THIS
+      console.log("✅ Connected to:", data.context);
       setCommonStatus(data);
     } catch (e) {
       setCommonStatus({ connected: false, context: null });
@@ -318,7 +319,6 @@ export default function AIToolsModal({
           newResults[m] = await res.json();
         } catch (err) {
           console.error(`Error training ${m}:`, err);
-          // Optional: alert user specific model failed
         }
       });
 
@@ -423,6 +423,12 @@ export default function AIToolsModal({
       loadAvailableTables();
     }
   }, [userSchema]);
+
+  useEffect(() => {
+    if (selectedTable && userSchema) {
+      loadTableFields();
+    }
+  }, [selectedTable]);
 
   useEffect(() => {
     if (selectedTable && (dependentVar || independentVars.length > 0)) {
@@ -680,7 +686,6 @@ function AttributePreviewTable({
     return [...(dependentVar ? [dependentVar] : []), ...independentVars];
   }, [dependentVar, independentVars]);
 
-  // ✅ SORTING LOGIC: Sorts rows based on clicked column
   const sortedRows = React.useMemo(() => {
     if (!sortConfig.key || displayColumns.length === 0) return previewRows;
 
@@ -689,9 +694,9 @@ function AttributePreviewTable({
       const bVal = parseFloat(b[sortConfig.key]) || 0;
 
       if (sortConfig.direction === "asc") {
-        return aVal - bVal; // Low to High
+        return aVal - bVal;
       } else {
-        return bVal - aVal; // High to Low
+        return bVal - aVal;
       }
     });
   }, [previewRows, sortConfig, displayColumns]);
@@ -758,7 +763,6 @@ function AttributePreviewTable({
                 style={{ cursor: "pointer", userSelect: "none" }}
               >
                 {col}
-                {/* ✅ VISUAL INDICATOR: Shows sort direction */}
                 {sortConfig.key === col && (
                   <span style={{ marginLeft: "8px", fontSize: "12px" }}>
                     {sortConfig.direction === "asc" ? "▲" : "▼"}

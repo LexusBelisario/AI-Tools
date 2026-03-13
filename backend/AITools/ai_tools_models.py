@@ -389,3 +389,181 @@ async def get_model_blob(
         if db is not None:
             db.close()
         clear_request_context()
+
+# ---------------------------------------------------------------
+# Save trained model (.pkl) to GIS DB  →  ai_trained_models table
+# ---------------------------------------------------------------
+@router.post("/save-model-to-gis-db")
+async def save_model_to_gis_db(
+    model_path: str = Form(...),
+    model_type: str = Form(...),
+    dependent_var: str = Form(""),
+    features_json: str = Form(""),
+    metrics_json: str = Form(""),
+    authorization: str = Header(default=""),
+    x_target_schema: str = Header(default="", alias="X-Target-Schema"),
+    x_target_db: str = Header(default="", alias="X-Target-DB"),
+):
+    token = _extract_bearer_token(authorization)
+    ctx = resolve_common_context_from_token(
+        token,
+        db_override=(x_target_db or None),
+        schema_override=(x_target_schema or None),
+    )
+    set_request_context(ctx)
+    db = None
+
+    try:
+        schema = _validate_ident(ctx["schema"], "schema")
+        safe_path = _safe_model_path(model_path)
+
+        with open(safe_path, "rb") as f:
+            blob = f.read()
+
+        try:
+            features = json.loads(features_json) if features_json else None
+        except Exception:
+            features = None
+
+        try:
+            metrics = json.loads(metrics_json) if metrics_json else None
+        except Exception:
+            metrics = None
+
+        meta = {
+            "saved_from": "manual_save_modal",
+            "source_file": os.path.basename(safe_path),
+            "saved_at": datetime.utcnow().isoformat(),
+        }
+
+        db = get_request_session()
+        _ensure_models_table(db, schema)
+
+        guessed = _parse_version_from_filename(safe_path)
+        version = guessed if guessed > 0 else _next_model_version(db, schema, model_type)
+
+        row = db.execute(
+            text(f'''
+                INSERT INTO "{schema}"."ai_trained_models"
+                    (model_name, model_type, model_version, dependent_var, features, metrics, model_blob, meta)
+                VALUES
+                    (:model_name, :model_type, :model_version, :dependent_var,
+                     CAST(:features AS JSONB), CAST(:metrics AS JSONB), :model_blob, CAST(:meta AS JSONB))
+                RETURNING id
+            '''),
+            {
+                "model_name": os.path.splitext(os.path.basename(safe_path))[0],
+                "model_type": model_type,
+                "model_version": int(version),
+                "dependent_var": dependent_var or None,
+                "features": json.dumps(features) if features is not None else None,
+                "metrics": json.dumps(metrics) if metrics is not None else None,
+                "model_blob": blob,
+                "meta": json.dumps(meta),
+            },
+        ).fetchone()
+
+        db.commit()
+
+        return {
+            "success": True,
+            "id": int(row[0]),
+            "schema": schema,
+            "table_name": "ai_trained_models",
+            "model_type": model_type,
+            "model_version": int(version),
+        }
+
+    finally:
+        if db is not None:
+            db.close()
+        clear_request_context()
+
+
+# ---------------------------------------------------------------
+# Save prediction shapefile ZIP to GIS DB  →  PostGIS table
+# ---------------------------------------------------------------
+@router.post("/save-predictions-to-gis-db")
+async def save_predictions_to_gis_db(
+    shapefile_path: str = Form(...),
+    model_type: str = Form("unknown"),
+    save_type: str = Form("training"),
+    authorization: str = Header(default=""),
+    x_target_schema: str = Header(default="", alias="X-Target-Schema"),
+    x_target_db: str = Header(default="", alias="X-Target-DB"),
+):
+    import geopandas as gpd
+    import zipfile, tempfile, shutil
+
+    token = _extract_bearer_token(authorization)
+    ctx = resolve_common_context_from_token(
+        token,
+        db_override=(x_target_db or None),
+        schema_override=(x_target_schema or None),
+    )
+    set_request_context(ctx)
+    db = None
+
+    try:
+        schema = _validate_ident(ctx["schema"], "schema")
+
+        if not shapefile_path:
+            raise HTTPException(status_code=400, detail="shapefile_path is required")
+
+        norm = os.path.normpath(shapefile_path)
+        if not os.path.exists(norm):
+            raise HTTPException(status_code=404, detail=f"File not found: {norm}")
+
+        # Determine table name from save_type + model_type
+        table_name = f"Predicted_{model_type.upper()}_{save_type}"
+
+        # Extract ZIP if needed
+        if norm.lower().endswith(".zip"):
+            tmpdir = tempfile.mkdtemp()
+            try:
+                with zipfile.ZipFile(norm, "r") as z:
+                    z.extractall(tmpdir)
+
+                shp_files = [
+                    os.path.join(root, f)
+                    for root, _, files in os.walk(tmpdir)
+                    for f in files if f.lower().endswith(".shp")
+                ]
+                if not shp_files:
+                    raise HTTPException(status_code=400, detail="No .shp found inside ZIP")
+
+                gdf = gpd.read_file(shp_files[0])
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            gdf = gpd.read_file(norm)
+
+        # Reproject to WGS84
+        if gdf.crs is None:
+            gdf = gdf.set_crs(epsg=4326)
+        elif gdf.crs.to_epsg() != 4326:
+            gdf = gdf.to_crs(epsg=4326)
+
+        db = get_request_session()
+        engine = db.get_bind()
+
+        gdf.to_postgis(
+            name=table_name,
+            con=engine,
+            schema=schema,
+            if_exists="replace",
+            index=False,
+        )
+        db.commit()
+
+        return {
+            "success": True,
+            "schema": schema,
+            "table_name": table_name,
+            "rows_saved": len(gdf),
+        }
+
+    finally:
+        if db is not None:
+            db.close()
+        clear_request_context()

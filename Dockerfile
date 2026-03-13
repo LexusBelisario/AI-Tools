@@ -44,8 +44,22 @@ COPY backend/ .
 # Put frontend build into backend static folder (matches main.py mount)
 COPY --from=frontend-builder /app/frontend/dist ./static
 
-# Data dir for docker-safe file paths (DATA_DIR=/data)
+# Data dir for docker-safe file paths
 RUN mkdir -p /data
+
+# =======================================================
+# Environment variables (baked into image)
+# =======================================================
+ENV COMMON_DB_HOST=aws-1-ap-southeast-1.pooler.supabase.com
+ENV COMMON_DB_PORT=6543
+ENV COMMON_DB_USER=postgres.wjrxtspjbnuqtatgupym
+ENV COMMON_DB_PASSWORD="#IGDIwebapp"
+ENV COMMON_DB_SSLMODE=require
+ENV SECRET_KEY=cama_integ
+ENV JWT_ALGORITHM=HS256
+ENV ENVIRONMENT=production
+ENV CORS_ORIGINS=*
+ENV DATA_DIR=/data
 
 EXPOSE 8001
 
