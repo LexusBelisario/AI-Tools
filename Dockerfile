@@ -48,19 +48,22 @@ COPY --from=frontend-builder /app/frontend/dist ./static
 RUN mkdir -p /data
 
 # =======================================================
-# Environment variables (baked into image)
+# Environment variables (baked into image for partner deployment)
+# Partner only needs: docker run -p 8003:8003 ai-tools
 # =======================================================
-ENV COMMON_DB_HOST=aws-1-ap-southeast-1.pooler.supabase.com
-ENV COMMON_DB_PORT=6543
-ENV COMMON_DB_USER=postgres.wjrxtspjbnuqtatgupym
-ENV COMMON_DB_PASSWORD="#IGDIwebapp"
+ENV COMMON_DB_HOST=34.143.153.78
+ENV COMMON_DB_PORT=5432
+ENV COMMON_DB_USER=blgf_gis_user
+ENV COMMON_DB_PASSWORD=Wo8sheiweedohhe2!
 ENV COMMON_DB_SSLMODE=require
 ENV SECRET_KEY=cama_integ
 ENV JWT_ALGORITHM=HS256
 ENV ENVIRONMENT=production
+ENV DATA_DIR=/app/backend
+ENV DB_POOL_SIZE=5
+ENV DB_MAX_OVERFLOW=10
 ENV CORS_ORIGINS=*
-ENV DATA_DIR=/data
 
-EXPOSE 8001
+EXPOSE 8003
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]
