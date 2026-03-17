@@ -3,7 +3,6 @@ import Plot from "react-plotly.js";
 import API from "../../api.js";
 import TrainingLoader from "./components/trainingLoader.jsx";
 import MapLoader from "./components/MapLoader.jsx";
-import SaveToDBModal from "./SaveToDBModal.jsx";
 import "./components/aitoolsmodal.css";
 import {
   SCATTER_LAYOUT,
@@ -36,8 +35,6 @@ export default function AIToolsModal({
   const [previewRows, setPreviewRows] = useState([]);
   const [previewTotal, setPreviewTotal] = useState(0);
   const [previewPage, setPreviewPage] = useState(1);
-  const [saveModalOpen, setSaveModalOpen] = useState(false);
-  const [saveConfig, setSaveConfig] = useState(null);
 
   const PAGE_SIZE = 100;
 
@@ -78,7 +75,6 @@ export default function AIToolsModal({
 
   const tokenPayload = decodeJwtPayload(token);
 
-  // Read database name from token (supports new generic format + legacy keys)
   const userDb =
     tokenPayload.province_access ||
     tokenPayload.db ||
@@ -651,22 +647,6 @@ export default function AIToolsModal({
           />
         )}
       </div>
-
-      <SaveToDBModal
-        isOpen={saveModalOpen}
-        onClose={() => {
-          setSaveModalOpen(false);
-          setSaveConfig(null);
-        }}
-        userSchema={userSchema}
-        token={token}
-        saveType={saveConfig?.saveType}
-        modelType={saveConfig?.modelType}
-        modelPath={saveConfig?.modelPath}
-        dependentVar={saveConfig?.dependentVar}
-        independentVars={saveConfig?.independentVars}
-        shapefilePath={saveConfig?.shapefilePath}
-      />
     </div>
   );
 }
@@ -1616,66 +1596,6 @@ function ModelDownloads({
             </li>
           )}
         </ul>
-
-        <div className="blgf-ai-action-buttons">
-          {dl.shapefile && (
-            <button
-              className="blgf-ai-btn-primary wide"
-              onClick={async () => {
-                const actualField = result?.dependent_var || "unit_value";
-                setLoadingFieldName(actualField.toUpperCase());
-                setLoadingMap(true);
-
-                const rawPath =
-                  dl.shapefile_raw || extractFilePath(dl.shapefile);
-                const enc = encodeURIComponent(rawPath);
-                const url = `/api/ai-tools/preview-geojson?file_path=${enc}`;
-
-                const predictionRange = calculatePredictionRange();
-                const actualRange = calculateActualRange();
-
-                onShowMap({
-                  url,
-                  label:
-                    modelType === "lr"
-                      ? "Linear Regression"
-                      : modelType === "rf"
-                        ? "Random Forest"
-                        : "XGBoost",
-                  predictionField: "prediction",
-                  actualField: result?.dependent_var || "actual_val",
-                  predictionRange: predictionRange,
-                  actualRange: actualRange,
-                });
-
-                setTimeout(() => {
-                  setLoadingMap(false);
-                }, 1000);
-              }}
-            >
-              Visualize on Map
-            </button>
-          )}
-
-          {dl.shapefile && (
-            <button
-              className="blgf-ai-btn-secondary wide"
-              onClick={() => {
-                setSaveConfig({
-                  saveType: "model",
-                  modelType: modelType,
-                  modelPath: modelRawPath,
-                  dependentVar: result?.dependent_var || "",
-                  independentVars: result?.independent_vars || [],
-                  shapefilePath: shapefileRawPath,
-                });
-                setSaveModalOpen(true);
-              }}
-            >
-              Save to Database
-            </button>
-          )}
-        </div>
       </div>
     </div>
   );
