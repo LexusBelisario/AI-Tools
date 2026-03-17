@@ -1,2 +1,0 @@
-start cmd /k "cd backend && C:\Users\delux\AppData\Local\Programs\Python\Python313\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8001 --env-file .env"
-start cmd /k "cd frontend && npm run dev"

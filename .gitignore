@@ -59,6 +59,7 @@ exported_models/
 .DS_Store
 Thumbs.db
 desktop.ini
+run.bat
 
 # =======================================================
 # Docker
@@ -71,3 +72,5 @@ desktop.ini
 *.log
 tmp/
 temp/
+
+
