@@ -39,6 +39,10 @@ router = APIRouter()
 EXPORT_DIR = os.path.join(os.getcwd(), "exported_models")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
+def build_artifact_base_name(model_used: str) -> str:
+    now = datetime.now()
+    return f"{model_used}-{now.strftime('%Y-%m-%d')}-{now.strftime('%H-%M-%S')}"
+
 def wrap_plot_urls(plots: Dict[str, Optional[str]], prefix: str) -> Dict[str, Optional[str]]:
     return {
         key: (f"{prefix}?file={path}" if path else None)
@@ -183,7 +187,8 @@ def export_xgb_report_and_artifacts(
 
     # 4️⃣ PDF report (STYLED LIKE LR)
     accent = "#1e88e5"
-    pdf_path = os.path.join(export_path, f"XGB_Report_v{model_version}.pdf")
+    artifact_base = build_artifact_base_name("XGB")
+    pdf_path = os.path.join(export_path, f"{artifact_base}.pdf")
     
     with PdfPages(pdf_path) as pp:
         # ========== METRICS TABLE ==========
@@ -323,7 +328,7 @@ def export_xgb_report_and_artifacts(
     print(f"   ✅ PDF report saved: {pdf_path}")
 
     # 5️⃣ Save model
-    model_path = os.path.join(export_path, f"XGB_model_{model_version}.pkl")
+    model_path = os.path.join(export_path, f"{artifact_base}.pkl")
     with open(model_path, 'wb') as f:
         pickle.dump(
             {

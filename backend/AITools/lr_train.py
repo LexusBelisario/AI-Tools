@@ -28,6 +28,10 @@ router = APIRouter()
 EXPORT_DIR = os.path.join(os.getcwd(), "exported_models")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
+def build_artifact_base_name(model_used: str) -> str:
+    now = datetime.now()
+    return f"{model_used}-{now.strftime('%Y-%m-%d')}-{now.strftime('%H-%M-%S')}"
+
 def wrap_plot_urls(plots: Dict[str, Optional[str]], prefix: str) -> Dict[str, Optional[str]]:
     return {
         key: (f"{prefix}?file={path}" if path else None)
@@ -255,7 +259,8 @@ def export_full_report_and_artifacts(
     residuals: pd.Series,
     X_train_unscaled: pd.DataFrame = None,
     model_version: int = 1,
-) -> Tuple[Dict[str, Any], Dict[str, str], Dict[str, str]]:
+    artifact_base: str = "LR",
+) -> Tuple[Dict[str, Any], Dict[str, str], Dict[str, str], str]:
 
     mse = float(np.mean((y_test - preds) ** 2))
     mae = float(np.mean(np.abs(y_test - preds)))
@@ -325,7 +330,7 @@ def export_full_report_and_artifacts(
     accent = "#1e88e5"
     png_paths: Dict[str, str] = {}
 
-    pdf_path = os.path.join(export_path, f"LR_Report_v{model_version}.pdf")
+    pdf_path = os.path.join(export_path, f"{artifact_base}.pdf")
     with PdfPages(pdf_path) as pp:
         # Metrics table
         fig, ax = plt.subplots(figsize=(6, 1.5))
@@ -603,8 +608,8 @@ async def train_linear_regression(
         os.makedirs(export_path, exist_ok=True)
 
         print(f"📦 Creating export folder: {export_id} (Version {model_version})")
-
-        model_path = os.path.join(export_path, f"LR_model_{model_version}.pkl")
+        artifact_base = build_artifact_base_name("LR")
+        model_path = os.path.join(export_path, f"{artifact_base}.pkl")
         joblib.dump(
             {
                 "model": model,

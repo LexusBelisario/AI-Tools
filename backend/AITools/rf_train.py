@@ -46,6 +46,9 @@ router = APIRouter()
 EXPORT_DIR = os.path.join(os.getcwd(), "exported_models")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
+def build_artifact_base_name(model_used: str) -> str:
+    now = datetime.now()
+    return f"{model_used}-{now.strftime('%Y-%m-%d')}-{now.strftime('%H-%M-%S')}"
 
 def _wrap_download_urls(paths: Dict[str, Optional[str]], base_url: str) -> Dict[str, Optional[str]]:
     # same pattern used sa ibang trainers: /download?file=...
@@ -180,7 +183,8 @@ def export_rf_report_and_artifacts(
     # ===========================
     # 3) PDF REPORT (same idea as LR/XGB)
     # ===========================
-    pdf_path = os.path.join(export_path, f"RF_Report_v{model_version}.pdf")
+    artifact_base = build_artifact_base_name("RF")
+    pdf_path = os.path.join(export_path, f"{artifact_base}.pdf")
     with PdfPages(pdf_path) as pp:
         # metrics table page
         fig, ax = plt.subplots(figsize=(6, 1.5))
@@ -307,7 +311,7 @@ def export_rf_report_and_artifacts(
     # ===========================
     # 4) SAVE MODEL (keep .pkl, compress para di sobrang laki)
     # ===========================
-    model_path = os.path.join(export_path, f"RF_model_{model_version}.pkl")
+    model_path = os.path.join(export_path, f"{artifact_base}.pkl")
     joblib.dump(
         {
             "model": model,

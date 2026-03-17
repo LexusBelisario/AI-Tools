@@ -1,11 +1,11 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import AIToolsModal from "./MAP/PredictiveModelTools/AIToolsModal";
+import AIToolsModal from "./AITools/AIToolsModal.jsx";
 import { useEffect, useState } from "react";
 
 export default function App() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [token, setToken] = useState(
-    () => localStorage.getItem("access_token") || ""
+    () => localStorage.getItem("access_token") || "",
   );
   const [shouldDisconnect, setShouldDisconnect] = useState(false);
 
@@ -18,7 +18,9 @@ export default function App() {
   //   VITE_TRUSTED_ORIGINS=http://localhost:5173,https://partner-app.example.com
   const TRUSTED_ORIGINS = (
     import.meta.env.VITE_TRUSTED_ORIGINS || "http://localhost:5173"
-  ).split(",").map((o) => o.trim());
+  )
+    .split(",")
+    .map((o) => o.trim());
 
   const API = import.meta.env.VITE_API_URL || "http://localhost:8001";
 

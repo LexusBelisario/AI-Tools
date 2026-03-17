@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Plot from "react-plotly.js";
-import API from "../../api.js";
+import API from "../api.js";
 import TrainingLoader from "./components/trainingLoader.jsx";
 import MapLoader from "./components/MapLoader.jsx";
 import "./components/aitoolsmodal.css";
@@ -35,6 +35,8 @@ export default function AIToolsModal({
   const [previewRows, setPreviewRows] = useState([]);
   const [previewTotal, setPreviewTotal] = useState(0);
   const [previewPage, setPreviewPage] = useState(1);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveConfig, setSaveConfig] = useState(null);
 
   const PAGE_SIZE = 100;
 
