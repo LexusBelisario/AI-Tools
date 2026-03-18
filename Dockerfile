@@ -14,7 +14,7 @@ COPY frontend/ .
 
 # Vite env vars must be set BEFORE build (they get baked in)
 ENV VITE_API_URL=""
-ENV VITE_TRUSTED_ORIGINS="http://localhost:5173,https://cama-core-14282293226.asia-southeast1.run.app"
+ENV VITE_TRUSTED_ORIGINS="http://localhost:5173,https://cama-core-14282293226.asia-southeast1.run.app,http://localhost:8000,http://35.194.255.28:8000"
 
 RUN npm run build --base=/
 
