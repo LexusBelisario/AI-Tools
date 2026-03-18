@@ -33,7 +33,6 @@ from AITools.ai_utils import (
     gdf_from_db_with_geometry,
     gdf_from_zip_or_parts,
     compute_variable_distributions,
-    get_next_model_version,
     extract_pin_column,
     upsert_pin_field,
     drop_duplicate_pin_fields,
@@ -48,7 +47,7 @@ os.makedirs(EXPORT_DIR, exist_ok=True)
 
 def build_artifact_base_name(model_used: str) -> str:
     now = datetime.now()
-    return f"{model_used}-{now.strftime('%Y-%m-%d')}-{now.strftime('%H-%M-%S')}"
+    return f"{model_used}_{now.strftime('%Y-%b-%d_%I-%M-%S%p')}"
 
 def _wrap_download_urls(paths: Dict[str, Optional[str]], base_url: str) -> Dict[str, Optional[str]]:
     # same pattern used sa ibang trainers: /download?file=...
@@ -78,7 +77,7 @@ def export_rf_report_and_artifacts(
     schema: Optional[str],
     table_name: Optional[str],
     file_gdf: Optional[gpd.GeoDataFrame] = None,
-    model_version: int = 1,
+    artifact_base: str = "RF",
 ) -> Dict[str, Any]:
     os.makedirs(export_path, exist_ok=True)
     plots_dir = os.path.join(export_path, "plots")
@@ -308,28 +307,23 @@ def export_rf_report_and_artifacts(
 
     print(f"   ✅ PDF report saved: {pdf_path}")
 
-    # ===========================
     # 4) SAVE MODEL (keep .pkl, compress para di sobrang laki)
-    # ===========================
     model_path = os.path.join(export_path, f"{artifact_base}.pkl")
     joblib.dump(
         {
             "model": model,
-            "scaler": scaler,                # important for universal runner
+            "scaler": scaler,
             "features": feature_names,
             "target": target,
-            "version": model_version,
             "model_type": "rf",
             "trained_at": datetime.now().isoformat(),
         },
         model_path,
         compress=3,
     )
-    print(f"💾 Saved model: RF_model_{model_version}.pkl")
+    print(f"Saved model: {os.path.basename(model_path)}")
 
-    # ===========================
     # 5) PREDICTIONS FOR df_valid + CSV (keep this feature)
-    # ===========================
     df_valid = df_valid.copy()
 
     # inject PIN if present
@@ -355,9 +349,9 @@ def export_rf_report_and_artifacts(
     cols.append(target)
     cols.append("prediction")
 
-    csv_path = os.path.join(export_path, f"RF_Training_Result_v{model_version}.csv")
+    csv_path = os.path.join(export_path, f"{artifact_base}.csv")
     df_valid[cols].to_csv(csv_path, index=False)
-    print(f"✅ Exported cleaned CSV (with PIN if available): {csv_path}")
+    print(f"Exported cleaned CSV (with PIN if available): {csv_path}")
 
     # ===========================
     # 6) SHAPEFILE + ZIP EXPORT (keep this feature)
@@ -365,7 +359,7 @@ def export_rf_report_and_artifacts(
     zip_out = None
     try:
         if is_db_mode:
-            print("✅ Database mode: fetching geometry for export")
+            print("Database mode: fetching geometry for export")
             gdf_db = gdf_from_db_with_geometry(schema, table_name)
 
             # IMPORTANT: df_valid indices are ORIGINAL row positions
@@ -579,21 +573,16 @@ async def train_rf_model(
 
         y_pred = model.predict(X_test_scaled)
 
-        # ===========================
         # 10) df_valid (valid rows, keep original indices)
-        # ===========================
         valid_indices = df_model["__orig_index__"].values
         df_valid = df_full.loc[valid_indices].copy()
         df_valid = df_valid[indep + [target]].copy()
 
-        # ===========================
         # 11) EXPORT ARTIFACTS (keep everything)
-        # ===========================
-        model_version = get_next_model_version("rf")
-        export_id = f"rf_{model_version}"
-        export_path = os.path.join(EXPORT_DIR, export_id)
+        artifact_base = build_artifact_base_name("RF")
+        export_path = os.path.join(EXPORT_DIR, artifact_base)
         os.makedirs(export_path, exist_ok=True)
-        print(f"📦 Creating export folder: {export_id} (Version {model_version})")
+        print(f"📦 Creating export folder: {artifact_base}")
 
         artifacts = export_rf_report_and_artifacts(
             export_path=export_path,
@@ -615,24 +604,20 @@ async def train_rf_model(
             schema=schema,
             table_name=table_name,
             file_gdf=file_gdf,
-            model_version=model_version,
+            artifact_base=artifact_base,
         )
 
         plots = artifacts["plots"]
         downloads = artifacts["downloads"]
         metrics = artifacts["metrics"]
 
-        # ===========================
         # 12) INTERACTIVE DATA (same payload concept)
-        # ===========================
         residuals = y_test - y_pred
         counts, bin_edges = np.histogram(residuals, bins=20)
         residual_bins = bin_edges.tolist()
         residual_counts = counts.tolist()
 
-        # ===========================
         # 13) VARIABLE DISTRIBUTIONS (keep)
-        # ===========================
         print("📊 Computing variable distributions for RF...")
         variable_distributions = compute_variable_distributions(
             df_model[indep].copy(),
@@ -681,8 +666,8 @@ async def train_rf_model(
         # 16) RETURN RESPONSE (LR-like feel)
         # ===========================
         return {
-            "model_version": model_version,
-            "model_id": export_id,
+            "model_name": artifact_base,
+            "model_id": artifact_base,
             "message": "Random Forest training completed successfully.",
             "dependent_var": target,
             "metrics": metrics,

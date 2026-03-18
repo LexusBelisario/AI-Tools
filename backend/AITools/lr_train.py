@@ -18,7 +18,6 @@ from db import get_user_database_session
 from AITools.ai_utils import (
     extract_pin_column,
     compute_variable_distributions,
-    get_next_model_version,
     upsert_pin_field,
     drop_duplicate_pin_fields,
 )
@@ -30,7 +29,7 @@ os.makedirs(EXPORT_DIR, exist_ok=True)
 
 def build_artifact_base_name(model_used: str) -> str:
     now = datetime.now()
-    return f"{model_used}-{now.strftime('%Y-%m-%d')}-{now.strftime('%H-%M-%S')}"
+    return f"{model_used}_{now.strftime('%Y-%b-%d_%I-%M-%S%p')}"
 
 def wrap_plot_urls(plots: Dict[str, Optional[str]], prefix: str) -> Dict[str, Optional[str]]:
     return {
@@ -258,7 +257,6 @@ def export_full_report_and_artifacts(
     preds: np.ndarray,
     residuals: pd.Series,
     X_train_unscaled: pd.DataFrame = None,
-    model_version: int = 1,
     artifact_base: str = "LR",
 ) -> Tuple[Dict[str, Any], Dict[str, str], Dict[str, str], str]:
 
@@ -602,13 +600,10 @@ async def train_linear_regression(
         preds = model.predict(X_test_scaled)
         residuals = y_test - preds
 
-        model_version = get_next_model_version("linear")
-        export_id = f"linear_{model_version}"
-        export_path = os.path.join(EXPORT_DIR, export_id)
+        artifact_base = build_artifact_base_name("LR")
+        export_path = os.path.join(EXPORT_DIR, artifact_base)
         os.makedirs(export_path, exist_ok=True)
 
-        print(f"📦 Creating export folder: {export_id} (Version {model_version})")
-        artifact_base = build_artifact_base_name("LR")
         model_path = os.path.join(export_path, f"{artifact_base}.pkl")
         joblib.dump(
             {
@@ -616,19 +611,18 @@ async def train_linear_regression(
                 "scaler": scaler,
                 "features": [v.lower() for v in indep],
                 "dependent_var": target.lower(),
-                "version": model_version,  # ✅ Store version
                 "model_type": "lr",
                 "trained_at": datetime.now().isoformat(),
             },
             model_path,
         )
-        print(f"💾 Saved model: LR_model_{model_version}.pkl")
+        print(f"💾 Saved model: {os.path.basename(model_path)}")
         # Generate report
         metrics, png_paths, t_tests, pdf_path = export_full_report_and_artifacts(
             export_path, model, scaler, indep, target,
             X_train_scaled, y_train, X_test_scaled, y_test, preds, residuals,
             X_train_unscaled=X_train,
-            model_version=model_version,
+            artifact_base=artifact_base,
         )
 
         # Export CSV with predictions
@@ -640,8 +634,8 @@ async def train_linear_regression(
         safe_target_name = "actual_val" if len(target) > 10 else target
 
         # Define output CSV path
-        csv_path = os.path.join(export_path, f"LR_Training_Result_v{model_version}.csv")
-
+        csv_path = os.path.join(export_path, f"{artifact_base}.csv")
+        
         csv_df = df_valid[indep + [target, "prediction"]].copy()
 
         if pin_series is not None:
@@ -855,8 +849,8 @@ async def train_linear_regression(
 
 
         return {
-            "model_version": model_version,
-            "model_id": export_id,
+            "model_name": artifact_base,
+            "model_id": artifact_base,
             "dependent_var": safe_target_name,
             "original_dependent_var": target,
             "metrics": metrics,

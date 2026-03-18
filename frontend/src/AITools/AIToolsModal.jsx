@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import Plot from "react-plotly.js";
 import API from "../api.js";
 import TrainingLoader from "./components/trainingLoader.jsx";
-import MapLoader from "./components/MapLoader.jsx";
 import "./components/aitoolsmodal.css";
 import {
   SCATTER_LAYOUT,
@@ -495,7 +494,6 @@ export default function AIToolsModal({
 
   return (
     <div className="blgf-ai-root">
-      <MapLoader isLoading={loadingMap} fieldName={loadingFieldName} />
       <div className="blgf-ai-panel">
         <TrainingLoader isTraining={training} />
 
@@ -1188,14 +1186,21 @@ function MetricsSection({
 
         <table className="blgf-ai-table narrow">
           <tbody>
-            {Object.entries(metrics).map(([k, v]) => (
-              <tr key={k}>
-                <td>{k}</td>
-                <td className="align-right">
-                  {typeof v === "number" ? v.toFixed(6) : v}
-                </td>
-              </tr>
-            ))}
+            {[
+              ["MSE", metrics.MSE ?? metrics.mse],
+              ["RMSE", metrics.RMSE ?? metrics.rmse],
+              ["MAE", metrics.MAE ?? metrics.mae],
+              ["R²", metrics["R²"] ?? metrics.r2],
+            ]
+              .filter(([, v]) => v !== undefined && v !== null)
+              .map(([label, value]) => (
+                <tr key={label}>
+                  <td>{label}</td>
+                  <td className="align-right">
+                    {typeof value === "number" ? value.toFixed(6) : value}
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>

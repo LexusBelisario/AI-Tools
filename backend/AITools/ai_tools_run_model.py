@@ -87,44 +87,24 @@ def _validate_ident(name: str, kind: str) -> str:
 # ==========================================================
 # DB HELPERS
 # ==========================================================
-def _quote_ident(engine, ident: str) -> str:
-    return engine.dialect.identifier_preparer.quote(ident)
-
-
-def _resolve_column_name(engine, schema: str, table_name: str, desired_lower: str) -> Optional[str]:
-    q = """
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema = :schema
-      AND table_name = :table_name
-    """
-    with engine.begin() as conn:
-        rows = conn.execute(text(q), {"schema": schema, "table_name": table_name}).fetchall()
-
-    for (col_name,) in rows:
-        if str(col_name).lower() == desired_lower:
-            return col_name
-    return None
-
-
 def _ensure_numeric_column(engine, schema: str, table_name: str, col_name: str):
-    # Add column if missing (double precision)
+    """Add a double precision column to the table if it doesn't exist yet."""
     q = """
-    DO $$
-    BEGIN
-        IF NOT EXISTS (
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_schema = :schema
-              AND table_name = :table_name
-              AND column_name = :col_name
+   DO $$
+   BEGIN
+       IF NOT EXISTS (
+           SELECT 1
+           FROM information_schema.columns
+           WHERE table_schema = :schema
+             AND table_name   = :table_name
+             AND column_name  = :col_name
         ) THEN
-            EXECUTE format(
+           EXECUTE format(
                 'ALTER TABLE %I.%I ADD COLUMN %I double precision',
                 :schema, :table_name, :col_name
             );
-        END IF;
-    END $$;
+       END IF;
+   END $$;
     """
     with engine.begin() as conn:
         conn.execute(text(q), {"schema": schema, "table_name": table_name, "col_name": col_name})
@@ -138,39 +118,34 @@ def _update_predictions_by_pin(
     pred_col_in_db: str,
     pin_pred_df: pd.DataFrame,
 ) -> int:
-    # Create staging table then update target by PIN
+    """
+   Write prediction values back to the target table matched by PIN.
+   Uses a temporary staging table to avoid row-by-row updates.
+    """
     staging = f"__pred_staging_{np.random.randint(100000, 999999)}"
 
     df = pin_pred_df.copy()
-    df = df.rename(columns={df.columns[0]: "pin", df.columns[1]: "prediction"})
+    df.columns = ["pin", "prediction"]
     df["pin"] = df["pin"].astype(str)
     df["prediction"] = pd.to_numeric(df["prediction"], errors="coerce")
+    df = df.dropna(subset=["pin"]).drop_duplicates(subset=["pin"], keep="first")
 
-    df = df.dropna(subset=["pin"])
-    df = df.drop_duplicates(subset=["pin"], keep="first")
+    df.to_sql(staging, con=engine, schema=schema, if_exists="replace", index=False, method="multi")
 
-    df.to_sql(
-        name=staging,
-        con=engine,
-        schema=schema,
-        if_exists="replace",
-        index=False,
-        method="multi",
-    )
-
-    qs = _quote_ident(engine, schema)
-    qt = _quote_ident(engine, table_name)
-    qpin = _quote_ident(engine, pin_col_in_db)
-    qpred = _quote_ident(engine, pred_col_in_db)
-    qst = _quote_ident(engine, staging)
+    # Quote identifiers safely
+    ip   = engine.dialect.identifier_preparer
+    qs   = ip.quote(schema)
+    qt   = ip.quote(table_name)
+    qpin = ip.quote(pin_col_in_db)
+    qpred = ip.quote(pred_col_in_db)
+    qst  = ip.quote(staging)
 
     update_sql = f"""
-        UPDATE {qs}.{qt} t
-        SET {qpred} = s.prediction
-        FROM {qs}.{qst} s
+       UPDATE {qs}.{qt} t
+          SET {qpred} = s.prediction
+         FROM {qs}.{qst} s
         WHERE lower(t.{qpin}::text) = lower(s.pin::text)
     """
-
     drop_sql = f"DROP TABLE IF EXISTS {qs}.{qst}"
 
     rowcount = 0
@@ -192,8 +167,8 @@ def _load_gdf_from_common_db(db_session, schema: str, table_name: str) -> gpd.Ge
     # First check if table exists
     exists = db_session.execute(
         text("""
-            SELECT 1 FROM information_schema.tables
-            WHERE table_schema = :schema AND table_name = :table_name
+           SELECT 1 FROM information_schema.tables
+           WHERE table_schema = :schema AND table_name = :table_name
         """),
         {"schema": schema, "table_name": table_name}
     ).fetchone()
@@ -207,11 +182,11 @@ def _load_gdf_from_common_db(db_session, schema: str, table_name: str) -> gpd.Ge
     # Find geometry column
     geom_cols = db_session.execute(
         text("""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = :schema
-              AND table_name = :table_name
-              AND udt_name IN ('geometry', 'geography')
+           SELECT column_name
+           FROM information_schema.columns
+           WHERE table_schema = :schema
+             AND table_name = :table_name
+             AND udt_name IN ('geometry', 'geography')
         """),
         {"schema": schema, "table_name": table_name}
     ).fetchall()
@@ -248,7 +223,7 @@ async def run_saved_model(
     x_target_db: str = Header(default="", alias="X-Target-DB"),
 ):
     """
-    Unified Run-Saved-Model endpoint that:
+   Unified Run-Saved-Model endpoint that:
       1. Loads model from UPLOAD or COMMON DATABASE
       2. Loads input data from DB or file
       3. Runs predictions
@@ -257,12 +232,12 @@ async def run_saved_model(
     """
     
     print("=" * 60)
-    print("🚀 RUN SAVED MODEL ENDPOINT")
-    print(f"   Model Source: {model_source}")
-    print(f"   Model ID: {model_id}")
-    print(f"   Schema: {schema}")
-    print(f"   Table: {table_name}")
-    print(f"   Has Authorization: {bool(authorization)}")
+    print(" RUN SAVED MODEL ENDPOINT")
+    print(f" Model Source: {model_source}")
+    print(f" Model ID: {model_id}")
+    print(f" Schema: {schema}")
+    print(f" Table: {table_name}")
+    print(f" Has Authorization: {bool(authorization)}")
     print("=" * 60)
     
     token = _extract_bearer_token(authorization)
@@ -273,7 +248,7 @@ async def run_saved_model(
         schema_override=(x_target_schema or schema),
     )
     
-    print(f"✅ Resolved context: {ctx}")
+    print(f" Resolved context: {ctx}")
     
     set_request_context(ctx)
     db = None
@@ -292,7 +267,7 @@ async def run_saved_model(
             if not model_file:
                 raise HTTPException(status_code=400, detail="model_file required for upload source")
             
-            print("📦 Loading model from uploaded file...")
+            print(" Loading model from uploaded file...")
             content = await model_file.read()
             model_bundle = joblib.load(io.BytesIO(content))
             
@@ -300,19 +275,19 @@ async def run_saved_model(
             if not model_id:
                 raise HTTPException(status_code=400, detail="model_id required for db source")
             
-            print(f"📦 Loading model ID {model_id} from Common Database...")
+            print(f" Loading model ID {model_id} from Common Database...")
             
             row = db.execute(
                 text(f'''
-                    SELECT 
+                   SELECT 
                         model_blob,
                         model_name,
                         model_type,
                         model_version,
                         dependent_var,
                         features
-                    FROM "{target_schema}"."ai_trained_models"
-                    WHERE id = :model_id
+                   FROM "{target_schema}"."ai_trained_models"
+                   WHERE id = :model_id
                 '''),
                 {"model_id": model_id}
             ).fetchone()
@@ -329,7 +304,7 @@ async def run_saved_model(
                 raise HTTPException(status_code=404, detail="Model blob is empty")
 
             blob_bytes = _normalize_blob_to_bytes(blob)
-            print(f"   BLOB size: {len(blob_bytes)} bytes")
+            print(f" BLOB size: {len(blob_bytes)} bytes")
 
             loaded_obj = _load_from_blob(blob_bytes)
 
@@ -357,7 +332,7 @@ async def run_saved_model(
 
             model_type = mtype or model_bundle.get("model_type", "unknown")
 
-            print(f"✅ Loaded model: {name} (v{version}) - {str(model_type).upper()}")
+            print(f" Loaded model: {name} (v{version}) - {str(model_type).upper()}")
 
         else:
             raise HTTPException(status_code=400, detail="Invalid model_source. Use 'upload' or 'db'")
@@ -371,43 +346,45 @@ async def run_saved_model(
         if not model_type:
             model_type = model_bundle.get("model_type", "unknown")
         
-        print(f"   Model type: {model_type}")
-        print(f"   Features: {features}")
-        print(f"   Dependent: {target}")
+        print(f" Model type: {model_type}")
+        print(f" Features: {features}")
+        print(f" Dependent: {target}")
 
         # ------------------------------------------------------
-        # 2. Load Input Data (DB or file)
+        # 2. Load Input Data
+        # DB mode: always predict from Training_Table, write back to LandParcel
+        # File mode: predict from uploaded shapefile
         # ------------------------------------------------------
         db_mode = bool(schema and table_name)
 
         if db_mode:
-            print(f"📊 Loading input from Common DB: {schema}.{table_name}")
-            
-            # Use Common DB session to load data
-            gdf = _load_gdf_from_common_db(db, schema, table_name)
-            print(f"   Loaded {len(gdf)} rows from {schema}.{table_name}")
+            # Always use Training_Table as prediction source (has the trained features)
+            training_table = "Training_Table"
+            print(f" Loading prediction input from Common DB: {schema}.{training_table}")
+            gdf = _load_gdf_from_common_db(db, schema, training_table)
+            print(f" Loaded {len(gdf)} rows from {schema}.{training_table}")
         else:
-            print("📁 Loading input from uploaded shapefile")
+            print(" Loading input from uploaded shapefile")
             gdf = gdf_from_zip_or_parts(shapefiles=shapefiles, zip_file=zip_file)
 
         df = pd.DataFrame(gdf.drop(columns="geometry", errors="ignore"))
         df.columns = [c.lower() for c in df.columns]
-        
-        print(f"   DataFrame columns: {list(df.columns)[:10]}...")
+
+        print(f" DataFrame columns: {list(df.columns)[:10]}...")
 
         # ------------------------------------------------------
         # 2b. Ensure required features exist
         # ------------------------------------------------------
         missing = [f for f in features if f not in df.columns]
         if missing:
-            print(f"❌ Missing features: {missing}")
+            print(f" Missing features: {missing}")
             return JSONResponse(
                 status_code=400,
                 content={"error": f"Missing required fields in {table_name}: {missing}"},
             )
 
         X = df[features].apply(pd.to_numeric, errors="coerce").fillna(0)
-        print(f"   Feature matrix shape: {X.shape}")
+        print(f" Feature matrix shape: {X.shape}")
 
         # ------------------------------------------------------
         # 3. Predict
@@ -421,8 +398,8 @@ async def run_saved_model(
         preds = np.array(preds).flatten()
         gdf["prediction"] = preds
 
-        print(f"✅ Prediction completed: {len(preds)} rows")
-        print(f"   Prediction range: {np.min(preds):.2f} - {np.max(preds):.2f}")
+        print(f" Prediction completed: {len(preds)} rows")
+        print(f" Prediction range: {np.min(preds):.2f} - {np.max(preds):.2f}")
 
         # ------------------------------------------------------
         # 3b. Optional actual/residual stats
@@ -463,9 +440,9 @@ async def run_saved_model(
                         "mae": float(np.mean(np.abs(residuals))),
                         "rmse": float(np.sqrt(np.mean(residuals ** 2))),
                     }
-                    print(f"   Residual MAE: {residual_stats['mae']:.2f}")
+                    print(f" Residual MAE: {residual_stats['mae']:.2f}")
             else:
-                print(f"   Note: Dependent variable '{target}' not found in input data")
+                print(f" Note: Dependent variable '{target}' not found in input data")
 
         valid_preds = preds[~np.isnan(preds)]
         if len(valid_preds) > 0:
@@ -497,7 +474,7 @@ async def run_saved_model(
             for fname in os.listdir(shp_dir):
                 z.write(os.path.join(shp_dir, fname), fname)
 
-        print(f"✅ Exported shapefile: {zip_out}")
+        print(f" Exported shapefile: {zip_out}")
 
         # ------------------------------------------------------
         # 6. Export simple PDF summary
@@ -527,54 +504,65 @@ async def run_saved_model(
             pp.savefig(fig)
             plt.close(fig)
 
-        print(f"✅ Exported PDF: {pdf_path}")
+        print(f" Exported PDF: {pdf_path}")
 
         # ------------------------------------------------------
-        # 7. Save to Common DB (DB mode only): update by PIN
+        # 7. Write predictions back to LandParcel by PIN (DB mode only)
+        # Prediction source: Training_Table
+        # Write-back target: LandParcel
         # ------------------------------------------------------
         db_updated_rows = None
+        landparcel_table = "LandParcel"
         if db_mode:
             try:
-                # Find pin field in input data
-                pin_col_in_input = None
-                for c in df.columns:
-                    if c.lower() == "pin":
-                        pin_col_in_input = c
-                        break
+                engine = db.get_bind()
+
+                # Find PIN column in Training_Table data (case-insensitive)
+                pin_col_in_input = next(
+                    (c for c in df.columns if c.lower() == "pin"), None
+                )
 
                 if not pin_col_in_input:
-                    print("⚠️ Warning: PIN field not found. Skipping DB update.")
+                    print(" PIN column not found in Training_Table - skipping DB write-back.")
                 else:
-                    engine = db.get_bind()
+                    # Resolve actual PIN column name in LandParcel (case-insensitive)
+                    pin_cols = db.execute(
+                        text("""
+                            SELECT column_name
+                            FROM information_schema.columns
+                            WHERE table_schema = :schema
+                              AND table_name   = :table_name
+                        """),
+                        {"schema": schema, "table_name": landparcel_table},
+                    ).fetchall()
+                    pin_col_in_db = next(
+                        (r[0] for r in pin_cols if r[0].lower() == "pin"), None
+                    )
 
-                    # Resolve actual PIN column name in DB (case-insensitive)
-                    pin_col_in_db = _resolve_column_name(engine, schema, table_name, "pin")
                     if not pin_col_in_db:
-                        print("⚠️ Warning: PIN column not found in DB table. Skipping DB update.")
+                        print(f" PIN column not found in {landparcel_table} - skipping DB write-back.")
                     else:
                         pred_col_in_db = "prediction"
-                        _ensure_numeric_column(engine, schema, table_name, pred_col_in_db)
+                        _ensure_numeric_column(engine, schema, landparcel_table, pred_col_in_db)
 
-                        pin_pred_df = pd.DataFrame(
-                            {
-                                "pin": df[pin_col_in_input].astype(str),
-                                "prediction": preds,
-                            }
-                        )
+                        pin_pred_df = pd.DataFrame({
+                            "pin":        df[pin_col_in_input].astype(str),
+                            "prediction": preds,
+                        })
 
                         db_updated_rows = _update_predictions_by_pin(
                             engine=engine,
                             schema=schema,
-                            table_name=table_name,
+                            table_name=landparcel_table,
                             pin_col_in_db=pin_col_in_db,
                             pred_col_in_db=pred_col_in_db,
                             pin_pred_df=pin_pred_df,
                         )
 
-                        print(f"✅ Updated {db_updated_rows} rows in {schema}.{table_name} by PIN")
+                        print(f" Updated {db_updated_rows} rows in {schema}.{landparcel_table} (prediction column)")
 
             except Exception as db_err:
-                print(f"⚠️ Could not update predictions to DB: {db_err}")
+                print(f" DB write-back failed (non-fatal): {db_err}")
 
         # ------------------------------------------------------
         # 8. Response
@@ -607,7 +595,7 @@ async def run_saved_model(
             response_data["residual_stats"] = residual_stats
 
         print("=" * 60)
-        print("✅ RUN SAVED MODEL COMPLETE")
+        print(" RUN SAVED MODEL COMPLETE")
         print("=" * 60)
 
         return response_data
@@ -617,7 +605,7 @@ async def run_saved_model(
     except Exception as e:
         import traceback
         print("=" * 60)
-        print("❌ RUN-SAVED-MODEL ERROR:", e)
+        print(" RUN-SAVED-MODEL ERROR:", e)
         print(traceback.format_exc())
         print("=" * 60)
         return JSONResponse(

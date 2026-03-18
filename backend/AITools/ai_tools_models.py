@@ -60,21 +60,6 @@ def _safe_model_path(model_path: str) -> str:
     return norm
 
 
-def _parse_version_from_filename(filename: str) -> int:
-    if not filename:
-        return 0
-    base = os.path.splitext(os.path.basename(filename))[0]
-    m = re.search(r"(?:^|[_-])v(\d+)$", base, re.IGNORECASE)
-    if not m:
-        m = re.search(r"v(\d+)", base, re.IGNORECASE)
-    if not m:
-        return 0
-    try:
-        return int(m.group(1))
-    except Exception:
-        return 0
-
-
 def _ensure_models_table(db, schema: str):
     schema = _validate_ident(schema, "schema")
 
@@ -116,21 +101,6 @@ def _ensure_models_table(db, schema: str):
         ALTER COLUMN model_version SET NOT NULL
     '''))
     db.commit()
-
-
-def _next_model_version(db, schema: str, model_type: str) -> int:
-    schema = _validate_ident(schema, "schema")
-    row = db.execute(
-        text(f'''
-            SELECT COALESCE(MAX(model_version), 0)
-            FROM "{schema}"."ai_trained_models"
-            WHERE model_type = :model_type
-        '''),
-        {"model_type": model_type},
-    ).fetchone()
-
-    maxv = int(row[0]) if row and row[0] is not None else 0
-    return maxv + 1
 
 
 @router.post("/save-trained-model-local")
@@ -182,12 +152,8 @@ async def save_trained_model_local(
         db = get_request_session()
         _ensure_models_table(db, schema)
 
-        if not model_version or int(model_version) <= 0:
-            guessed = _parse_version_from_filename(safe_path)
-            if guessed > 0:
-                model_version = guessed
-            else:
-                model_version = _next_model_version(db, schema, model_type)
+        stored_model_name = os.path.splitext(os.path.basename(safe_path))[0]
+        stored_model_version = 1
 
         row = db.execute(
             text(f'''
@@ -199,9 +165,9 @@ async def save_trained_model_local(
                 RETURNING id
             '''),
             {
-                "model_name": os.path.splitext(os.path.basename(safe_path))[0],
+                "model_name": stored_model_name,
                 "model_type": model_type,
-                "model_version": int(model_version),
+                "model_version": stored_model_version,
                 "dependent_var": dependent_var or None,
                 "features": json.dumps(features) if features is not None else None,
                 "metrics": json.dumps(metrics) if metrics is not None else None,
@@ -218,7 +184,8 @@ async def save_trained_model_local(
             "message": f"Saved model to Common DB table {schema}.ai_trained_models",
             "schema": schema,
             "id": new_id,
-            "model_version": int(model_version),
+            "model_name": stored_model_name,
+            "model_version": stored_model_version,
         }
 
     finally:
@@ -233,10 +200,6 @@ async def list_models(
     x_target_schema: str = Header(default="", alias="X-Target-Schema"),
     x_target_db: str = Header(default="", alias="X-Target-DB"),
 ):
-    """
-    List available models from Common Database ai_trained_models table.
-    Returns model details including ID for fetching.
-    """
     token = _extract_bearer_token(authorization)
 
     ctx = resolve_common_context_from_token(
@@ -252,7 +215,6 @@ async def list_models(
         schema = _validate_ident(ctx["schema"], "schema")
         db = get_request_session()
 
-        # Check if table exists
         exists = db.execute(
             text('''
                 SELECT 1
@@ -265,7 +227,6 @@ async def list_models(
         if not exists:
             return {"models": []}
 
-        # Fetch model details
         rows = db.execute(text(f'''
             SELECT 
                 id,
@@ -283,13 +244,12 @@ async def list_models(
         models = []
         for row in rows:
             model_id, name, mtype, version, dep_var, features_json, created = row
-            
-            # Parse features if available
+
             features = None
             if features_json:
                 try:
                     features = json.loads(features_json) if isinstance(features_json, str) else features_json
-                except:
+                except Exception:
                     features = features_json
 
             models.append({
@@ -300,7 +260,7 @@ async def list_models(
                 "dependent_var": dep_var,
                 "features": features,
                 "created_at": created.isoformat() if created else None,
-                "display_name": f"{name} (v{version}) - {mtype.upper()}"
+                "display_name": name,
             })
 
         return {"models": models}
@@ -318,10 +278,6 @@ async def get_model_blob(
     x_target_schema: str = Header(default="", alias="X-Target-Schema"),
     x_target_db: str = Header(default="", alias="X-Target-DB"),
 ):
-    """
-    Fetch model BLOB from Common Database by ID.
-    Returns the pickled model bundle in memory.
-    """
     token = _extract_bearer_token(authorization)
 
     ctx = resolve_common_context_from_token(
@@ -360,15 +316,13 @@ async def get_model_blob(
         if not blob:
             raise HTTPException(status_code=404, detail="Model blob is empty")
 
-        # Parse features
         features = None
         if features_json:
             try:
                 features = json.loads(features_json) if isinstance(features_json, str) else features_json
-            except:
+            except Exception:
                 features = features_json
 
-        # Load the model from blob
         try:
             model_bundle = joblib.load(io.BytesIO(blob))
         except Exception as e:
@@ -390,9 +344,7 @@ async def get_model_blob(
             db.close()
         clear_request_context()
 
-# ---------------------------------------------------------------
-# Save trained model (.pkl) to GIS DB  →  ai_trained_models table
-# ---------------------------------------------------------------
+
 @router.post("/save-model-to-gis-db")
 async def save_model_to_gis_db(
     model_path: str = Form(...),
@@ -439,8 +391,8 @@ async def save_model_to_gis_db(
         db = get_request_session()
         _ensure_models_table(db, schema)
 
-        guessed = _parse_version_from_filename(safe_path)
-        version = guessed if guessed > 0 else _next_model_version(db, schema, model_type)
+        stored_model_name = os.path.splitext(os.path.basename(safe_path))[0]
+        stored_model_version = 1
 
         row = db.execute(
             text(f'''
@@ -452,9 +404,9 @@ async def save_model_to_gis_db(
                 RETURNING id
             '''),
             {
-                "model_name": os.path.splitext(os.path.basename(safe_path))[0],
+                "model_name": stored_model_name,
                 "model_type": model_type,
-                "model_version": int(version),
+                "model_version": stored_model_version,
                 "dependent_var": dependent_var or None,
                 "features": json.dumps(features) if features is not None else None,
                 "metrics": json.dumps(metrics) if metrics is not None else None,
@@ -470,8 +422,9 @@ async def save_model_to_gis_db(
             "id": int(row[0]),
             "schema": schema,
             "table_name": "ai_trained_models",
+            "model_name": stored_model_name,
             "model_type": model_type,
-            "model_version": int(version),
+            "model_version": stored_model_version,
         }
 
     finally:
@@ -480,9 +433,6 @@ async def save_model_to_gis_db(
         clear_request_context()
 
 
-# ---------------------------------------------------------------
-# Save prediction shapefile ZIP to GIS DB  →  PostGIS table
-# ---------------------------------------------------------------
 @router.post("/save-predictions-to-gis-db")
 async def save_predictions_to_gis_db(
     shapefile_path: str = Form(...),
@@ -493,7 +443,9 @@ async def save_predictions_to_gis_db(
     x_target_db: str = Header(default="", alias="X-Target-DB"),
 ):
     import geopandas as gpd
-    import zipfile, tempfile, shutil
+    import zipfile
+    import tempfile
+    import shutil
 
     token = _extract_bearer_token(authorization)
     ctx = resolve_common_context_from_token(
@@ -514,10 +466,8 @@ async def save_predictions_to_gis_db(
         if not os.path.exists(norm):
             raise HTTPException(status_code=404, detail=f"File not found: {norm}")
 
-        # Determine table name from save_type + model_type
         table_name = f"Predicted_{model_type.upper()}_{save_type}"
 
-        # Extract ZIP if needed
         if norm.lower().endswith(".zip"):
             tmpdir = tempfile.mkdtemp()
             try:
@@ -538,7 +488,6 @@ async def save_predictions_to_gis_db(
         else:
             gdf = gpd.read_file(norm)
 
-        # Reproject to WGS84
         if gdf.crs is None:
             gdf = gdf.set_crs(epsg=4326)
         elif gdf.crs.to_epsg() != 4326:

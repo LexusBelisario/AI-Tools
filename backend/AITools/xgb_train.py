@@ -28,7 +28,6 @@ from AITools.ai_utils import (
     gdf_from_zip_or_parts,
     extract_pin_column,
     compute_variable_distributions,
-    get_next_model_version,
     upsert_pin_field, 
     drop_duplicate_pin_fields
 )
@@ -41,7 +40,7 @@ os.makedirs(EXPORT_DIR, exist_ok=True)
 
 def build_artifact_base_name(model_used: str) -> str:
     now = datetime.now()
-    return f"{model_used}-{now.strftime('%Y-%m-%d')}-{now.strftime('%H-%M-%S')}"
+    return f"{model_used}_{now.strftime('%Y-%b-%d_%I-%M-%S%p')}"
 
 def wrap_plot_urls(plots: Dict[str, Optional[str]], prefix: str) -> Dict[str, Optional[str]]:
     return {
@@ -138,7 +137,7 @@ def export_xgb_report_and_artifacts(
     schema: Optional[str],
     table_name: Optional[str],
     file_gdf: Optional[gpd.GeoDataFrame] = None,
-    model_version: int = 1,
+    artifact_base: str = "XGB",
 ) -> Dict[str, Any]:
     os.makedirs(export_path, exist_ok=True)
     plots_dir = os.path.join(export_path, "plots")
@@ -187,7 +186,6 @@ def export_xgb_report_and_artifacts(
 
     # 4️⃣ PDF report (STYLED LIKE LR)
     accent = "#1e88e5"
-    artifact_base = build_artifact_base_name("XGB")
     pdf_path = os.path.join(export_path, f"{artifact_base}.pdf")
     
     with PdfPages(pdf_path) as pp:
@@ -327,24 +325,23 @@ def export_xgb_report_and_artifacts(
             
     print(f"   ✅ PDF report saved: {pdf_path}")
 
-    # 5️⃣ Save model
+    # Save model
     model_path = os.path.join(export_path, f"{artifact_base}.pkl")
-    with open(model_path, 'wb') as f:
+    with open(model_path, "wb") as f:
         pickle.dump(
             {
                 "model": model,
                 "scaler": scaler,
                 "features": feature_names,
                 "target": target,
-                "version": model_version,
                 "model_type": "xgb",
                 "trained_at": datetime.now().isoformat(),
             },
             f,
         )
-    print(f"💾 Saved model: XGB_model_{model_version}.pkl")
+    print(f"Saved model: {os.path.basename(model_path)}")
 
-    # 6️⃣ Export CSV
+    #Export CSV
     preds_valid = model.predict(
         scaler.transform(df_valid[indep]) if scaler else df_valid[indep].values
     )
@@ -368,7 +365,7 @@ def export_xgb_report_and_artifacts(
     cols.append(target)
     cols.append("prediction")
 
-    csv_path = os.path.join(export_path, f"XGB_Training_Result_v{model_version}.csv")
+    csv_path = os.path.join(export_path, f"{artifact_base}.csv")
     df_valid[cols].to_csv(csv_path, index=False)
     print(f"✅ Exported CSV: {csv_path}")
 
@@ -560,18 +557,17 @@ async def train_xgb_model(
         )
         model.fit(X_train_scaled, y_train)
 
-        # 🔟 Predictions
+        #Predictions
         y_pred = model.predict(X_test_scaled)
 
-        # 1️⃣1️⃣ Prepare df_valid
+        #Prepare df_valid
         df_valid = df_model.copy()
 
-        # 1️⃣2️⃣ Export
-        model_version = get_next_model_version("xgb")
-        export_id = f"xgb_{model_version}"
-        export_path = os.path.join(EXPORT_DIR, export_id)
+        #Export
+        artifact_base = build_artifact_base_name("XGB")
+        export_path = os.path.join(EXPORT_DIR, artifact_base)
         os.makedirs(export_path, exist_ok=True)
-        print(f"📦 Creating export: {export_id} (v{model_version})")
+        print(f"Creating export: {artifact_base}")
 
         artifacts = export_xgb_report_and_artifacts(
             export_path=export_path,
@@ -592,7 +588,7 @@ async def train_xgb_model(
             schema=schema,
             table_name=table_name,
             file_gdf=file_gdf,
-            model_version=model_version,
+            artifact_base=artifact_base,
         )
 
         plots = artifacts["plots"]
@@ -648,8 +644,8 @@ async def train_xgb_model(
             wrapped_downloads["geojson"] = f"/api/ai-tools/preview-geojson?file_path={downloads['shapefile']}"
 
         return {
-            "model_version": model_version,
-            "model_id": export_id,
+            "model_name": artifact_base,
+            "model_id": artifact_base,
             "message": "XGBoost training completed",
             "dependent_var": target,
             "metrics": metrics,
