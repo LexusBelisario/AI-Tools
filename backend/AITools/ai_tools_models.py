@@ -68,7 +68,6 @@ def _ensure_models_table(db, schema: str):
             id BIGSERIAL PRIMARY KEY,
             model_name TEXT NOT NULL,
             model_type TEXT NOT NULL,
-            model_version INTEGER NOT NULL DEFAULT 1,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             dependent_var TEXT NULL,
             features JSONB NULL,
@@ -80,26 +79,9 @@ def _ensure_models_table(db, schema: str):
 
     db.execute(text(f'''
         ALTER TABLE "{schema}"."ai_trained_models"
-            ADD COLUMN IF NOT EXISTS model_version INTEGER
-    '''))
-    db.execute(text(f'''
-        ALTER TABLE "{schema}"."ai_trained_models"
             ADD COLUMN IF NOT EXISTS metrics JSONB
     '''))
 
-    db.execute(text(f'''
-        UPDATE "{schema}"."ai_trained_models"
-        SET model_version = 1
-        WHERE model_version IS NULL
-    '''))
-    db.execute(text(f'''
-        ALTER TABLE "{schema}"."ai_trained_models"
-        ALTER COLUMN model_version SET DEFAULT 1
-    '''))
-    db.execute(text(f'''
-        ALTER TABLE "{schema}"."ai_trained_models"
-        ALTER COLUMN model_version SET NOT NULL
-    '''))
     db.commit()
 
 
@@ -110,7 +92,6 @@ async def save_trained_model_local(
     dependent_var: str = Form(""),
     features_json: str = Form(""),
     metrics_json: str = Form(""),
-    model_version: int = Form(0),
     authorization: str = Header(default=""),
     x_target_schema: str = Header(default="", alias="X-Target-Schema"),
     x_target_db: str = Header(default="", alias="X-Target-DB"),
@@ -153,21 +134,19 @@ async def save_trained_model_local(
         _ensure_models_table(db, schema)
 
         stored_model_name = os.path.splitext(os.path.basename(safe_path))[0]
-        stored_model_version = 1
 
         row = db.execute(
             text(f'''
                 INSERT INTO "{schema}"."ai_trained_models"
-                    (model_name, model_type, model_version, dependent_var, features, metrics, model_blob, meta)
+                    (model_name, model_type, dependent_var, features, metrics, model_blob, meta)
                 VALUES
-                    (:model_name, :model_type, :model_version, :dependent_var,
+                    (:model_name, :model_type, :dependent_var,
                      CAST(:features AS JSONB), CAST(:metrics AS JSONB), :model_blob, CAST(:meta AS JSONB))
                 RETURNING id
             '''),
             {
                 "model_name": stored_model_name,
                 "model_type": model_type,
-                "model_version": stored_model_version,
                 "dependent_var": dependent_var or None,
                 "features": json.dumps(features) if features is not None else None,
                 "metrics": json.dumps(metrics) if metrics is not None else None,
@@ -185,7 +164,6 @@ async def save_trained_model_local(
             "schema": schema,
             "id": new_id,
             "model_name": stored_model_name,
-            "model_version": stored_model_version,
         }
 
     finally:
@@ -228,11 +206,10 @@ async def list_models(
             return {"models": []}
 
         rows = db.execute(text(f'''
-            SELECT 
+            SELECT
                 id,
                 model_name,
                 model_type,
-                model_version,
                 dependent_var,
                 features,
                 created_at
@@ -243,7 +220,7 @@ async def list_models(
 
         models = []
         for row in rows:
-            model_id, name, mtype, version, dep_var, features_json, created = row
+            model_id, name, mtype, dep_var, features_json, created = row
 
             features = None
             if features_json:
@@ -256,7 +233,6 @@ async def list_models(
                 "id": model_id,
                 "name": name,
                 "type": mtype,
-                "version": version,
                 "dependent_var": dep_var,
                 "features": features,
                 "created_at": created.isoformat() if created else None,
@@ -295,11 +271,10 @@ async def get_model_blob(
 
         row = db.execute(
             text(f'''
-                SELECT 
+                SELECT
                     model_blob,
                     model_name,
                     model_type,
-                    model_version,
                     dependent_var,
                     features
                 FROM "{schema}"."ai_trained_models"
@@ -311,7 +286,7 @@ async def get_model_blob(
         if not row:
             raise HTTPException(status_code=404, detail=f"Model ID {model_id} not found")
 
-        blob, name, mtype, version, dep_var, features_json = row
+        blob, name, mtype, dep_var, features_json = row
 
         if not blob:
             raise HTTPException(status_code=404, detail="Model blob is empty")
@@ -333,7 +308,6 @@ async def get_model_blob(
             "model_id": model_id,
             "model_name": name,
             "model_type": mtype,
-            "model_version": version,
             "dependent_var": dep_var,
             "features": features or model_bundle.get("features", []),
             "blob_size": len(blob),
@@ -392,21 +366,19 @@ async def save_model_to_gis_db(
         _ensure_models_table(db, schema)
 
         stored_model_name = os.path.splitext(os.path.basename(safe_path))[0]
-        stored_model_version = 1
 
         row = db.execute(
             text(f'''
                 INSERT INTO "{schema}"."ai_trained_models"
-                    (model_name, model_type, model_version, dependent_var, features, metrics, model_blob, meta)
+                    (model_name, model_type, dependent_var, features, metrics, model_blob, meta)
                 VALUES
-                    (:model_name, :model_type, :model_version, :dependent_var,
+                    (:model_name, :model_type, :dependent_var,
                      CAST(:features AS JSONB), CAST(:metrics AS JSONB), :model_blob, CAST(:meta AS JSONB))
                 RETURNING id
             '''),
             {
                 "model_name": stored_model_name,
                 "model_type": model_type,
-                "model_version": stored_model_version,
                 "dependent_var": dependent_var or None,
                 "features": json.dumps(features) if features is not None else None,
                 "metrics": json.dumps(metrics) if metrics is not None else None,
@@ -424,7 +396,6 @@ async def save_model_to_gis_db(
             "table_name": "ai_trained_models",
             "model_name": stored_model_name,
             "model_type": model_type,
-            "model_version": stored_model_version,
         }
 
     finally:

@@ -13,19 +13,7 @@ def generate_model_summary_page(
     n_samples: int,
     accent_color: str = "#1e88e5"
 ):
-    """
-    Generate a comprehensive summary page for the PDF report.
-    
-    Args:
-        pp: PdfPages object
-        model_type: "Linear Regression", "Random Forest", or "XGBoost"
-        metrics: Dictionary containing R², RMSE, MAE, MSE
-        features: List of feature names
-        importance_values: Array of feature importance/coefficient values
-        target_variable: Name of the dependent variable
-        n_samples: Number of samples used in training
-        accent_color: Color for styling
-    """
+
     fig = plt.figure(figsize=(8.5, 11))  # Letter size
     fig.suptitle(f"{model_type} Model Summary", fontsize=16, fontweight='bold', color=accent_color)
     
