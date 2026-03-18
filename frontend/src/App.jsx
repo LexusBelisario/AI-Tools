@@ -17,12 +17,16 @@ export default function App() {
   // Set VITE_TRUSTED_ORIGINS in .env to add more, e.g.:
   //   VITE_TRUSTED_ORIGINS=http://localhost:5173,https://partner-app.example.com
   const TRUSTED_ORIGINS = (
-    import.meta.env.VITE_TRUSTED_ORIGINS || "http://localhost:5173"
+    import.meta.env.VITE_TRUSTED_ORIGINS ||
+    "http://localhost:5173,https://cama-core-14282293226.asia-southeast1.run.app"
   )
     .split(",")
     .map((o) => o.trim());
 
-  const API = import.meta.env.VITE_API_URL || "http://localhost:8001";
+  // When VITE_API_URL is empty (Docker/production), API calls use relative
+  // paths which resolve to the same origin the frontend is served from.
+  const API = import.meta.env.VITE_API_URL || 
+  (window.location.port === "8003" ? "" : "http://localhost:8001");
 
   useEffect(() => {
     const handler = async (event) => {

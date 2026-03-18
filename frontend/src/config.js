@@ -6,7 +6,12 @@ export const AI_API_URL = (() => {
   const fromEnv = import.meta.env.VITE_AI_API_URL;
   if (fromEnv && String(fromEnv).trim()) return String(fromEnv).trim();
 
-  const { protocol, hostname } = window.location;
+  const { protocol, hostname, port } = window.location;
+
+  // ✅ Docker/production: frontend and backend served from same origin
+  if (port === "8003") {
+    return "";
+  }
 
   // ✅ Local dev: AI Tools backend runs on 8001
   if (isLocalhost(hostname)) {
