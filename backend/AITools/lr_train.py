@@ -45,7 +45,6 @@ def wrap_plot_urls(plots: Dict[str, Optional[str]], prefix: str) -> Dict[str, Op
 
 
 def get_provincial_code_from_schema(schema: str) -> str:
-    """PH0403406_Calauan -> PH04034 ; PH0402118_Silang -> PH04021"""
     if not schema:
         return ""
     return schema[:7] if len(schema) >= 7 else schema
@@ -69,7 +68,6 @@ def safe_to_float(x):
 
 
 def df_from_db(schema: str, table: str) -> pd.DataFrame:
-    """Load table from PostGIS, excluding geometry-like columns."""
     provincial_code = get_provincial_code_from_schema(schema)
     db_session = get_user_database_session(provincial_code)
     try:
@@ -249,13 +247,27 @@ def _add_page_header(fig, title: str, subtitle: Optional[str] = None):
     fig.text(0.07, 0.965, title, fontsize=20, fontweight="bold", color=REPORT_ACCENT, va="top")
     if subtitle:
         fig.text(0.07, 0.938, subtitle, fontsize=10.5, color="#5f6b7a", va="top")
-    fig.lines.append(plt.Line2D([0.07, 0.93], [0.922, 0.922], transform=fig.transFigure,
-                                color=REPORT_BORDER, linewidth=1.2))
+    fig.lines.append(
+        plt.Line2D(
+            [0.07, 0.93],
+            [0.922, 0.922],
+            transform=fig.transFigure,
+            color=REPORT_BORDER,
+            linewidth=1.2
+        )
+    )
 
 
 def _add_footer(fig, artifact_base: str, page_label: str):
-    fig.lines.append(plt.Line2D([0.07, 0.93], [0.05, 0.05], transform=fig.transFigure,
-                                color=REPORT_BORDER, linewidth=0.8))
+    fig.lines.append(
+        plt.Line2D(
+            [0.07, 0.93],
+            [0.05, 0.05],
+            transform=fig.transFigure,
+            color=REPORT_BORDER,
+            linewidth=0.8
+        )
+    )
     fig.text(0.07, 0.028, f"Model Report | {artifact_base}", fontsize=8.5, color="#6b7280")
     fig.text(0.93, 0.028, page_label, fontsize=8.5, color="#6b7280", ha="right")
 
@@ -266,7 +278,128 @@ def _save_png(fig, export_path: str, filename: str) -> str:
     return out
 
 
-def _metrics_interpretation_text(r2: float, rmse: float, mae: float, top_feature: Optional[str], top_value: Optional[float]) -> List[str]:
+def _wrap_text(text: str, chars_per_line: int) -> List[str]:
+    words = str(text).split()
+    lines = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if current and len(candidate) > chars_per_line:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _draw_wrapped_text(
+    ax,
+    x: float,
+    y_start: float,
+    text: str,
+    chars_per_line: int,
+    fontsize: float,
+    color: str,
+    line_gap: float = 0.12,
+    fontweight: Optional[str] = None,
+):
+    lines = _wrap_text(text, chars_per_line)
+    y = y_start
+    for line in lines:
+        ax.text(
+            x,
+            y,
+            line,
+            fontsize=fontsize,
+            color=color,
+            va="top",
+            fontweight=fontweight,
+            clip_on=True,
+        )
+        y -= line_gap
+    return y
+
+
+def _draw_paragraph_in_box(
+    ax,
+    text: str,
+    x: float = 0.03,
+    y_top: float = 0.78,
+    width_chars: int = 82,
+    fontsize: float = 10.5,
+    color: str = REPORT_DARK,
+    line_gap: float = 0.16,
+):
+    lines = _wrap_text(text, width_chars)
+    y = y_top
+    for line in lines:
+        ax.text(x, y, line, fontsize=fontsize, color=color, va="top", clip_on=True)
+        y -= line_gap
+    return y
+
+
+def _draw_feature_tags(ax, features: List[str], x_start=0.03, y_start=0.66):
+    x = x_start
+    y = y_start
+    row_height = 0.16
+    pad_x = 0.015
+    max_x = 0.95
+
+    for feat in features:
+        feat = str(feat)
+        est_w = min(0.012 * len(feat) + 0.06, 0.22)
+
+        if x + est_w > max_x:
+            x = x_start
+            y -= row_height
+
+        ax.text(
+            x,
+            y,
+            feat,
+            fontsize=9.2,
+            color=REPORT_DARK,
+            va="center",
+            ha="left",
+            bbox=dict(
+                boxstyle="round,pad=0.24,rounding_size=0.06",
+                facecolor="#eef6ff",
+                edgecolor="#b6d4fe",
+                linewidth=0.9,
+            ),
+            clip_on=True,
+        )
+        x += est_w + pad_x
+
+    return y
+
+def _estimate_feature_box_height(features: List[str]) -> float:
+    if not features:
+        return 0.16
+
+    rows = 1
+    current_width = 0.03
+    max_x = 0.95
+
+    for feat in features:
+        est_w = min(0.012 * len(str(feat)) + 0.06, 0.22)
+        if current_width + est_w > max_x:
+            rows += 1
+            current_width = 0.03 + est_w + 0.015
+        else:
+            current_width += est_w + 0.015
+
+    return max(0.22, min(0.42, 0.12 + rows * 0.075))
+
+def _metrics_interpretation_text(
+    r2: float,
+    rmse: float,
+    mae: float,
+    top_feature: Optional[str],
+    top_value: Optional[float],
+) -> List[str]:
     if r2 >= 0.75:
         perf_text = f"R² = {r2:.3f} indicates strong explanatory power."
     elif r2 >= 0.50:
@@ -292,16 +425,43 @@ def _metrics_interpretation_text(r2: float, rmse: float, mae: float, top_feature
     return [perf_text, error_text, feature_text]
 
 
-def _build_cover_page(pp: PdfPages, artifact_base: str, target: str, features: List[str], n_samples: int):
-    fig = _new_page()
-    fig.text(0.07, 0.88, "Linear Regression Model Report",
-             fontsize=24, fontweight="bold", color=REPORT_ACCENT)
-    fig.text(0.07, 0.84, "Structured training documentation",
-             fontsize=13, color="#5f6b7a")
+def _chunk_list(items: List[Any], size: int) -> List[List[Any]]:
+    if size <= 0:
+        return [items]
+    return [items[i:i + size] for i in range(0, len(items), size)]
 
-    meta_ax = fig.add_axes([0.07, 0.60, 0.86, 0.18])
+
+def _style_table(table, header_fontsize=9, body_fontsize=8.8, significant_col: Optional[int] = None):
+    for (i, j), cell in table.get_celld().items():
+        cell.set_edgecolor("#222222")
+        cell.set_linewidth(0.8)
+        if i == 0:
+            cell.set_facecolor(REPORT_ACCENT)
+            cell.set_text_props(weight="bold", color="white", fontsize=header_fontsize)
+        else:
+            if significant_col is not None and j == significant_col:
+                txt = cell.get_text().get_text()
+                cell.set_facecolor("#d1fae5" if txt == "Yes" else "#fee2e2")
+            else:
+                cell.set_facecolor("#f5f7fa" if i % 2 == 1 else "white")
+            cell.set_text_props(color=REPORT_DARK, fontsize=body_fontsize)
+
+
+def _build_cover_page(pp: PdfPages, artifact_base: str, target: str, features: List[str], n_samples: int, page_num: int) -> int:
+    fig = _new_page()
+    fig.text(0.07, 0.88, "Linear Regression Model Report", fontsize=24, fontweight="bold", color=REPORT_ACCENT)
+    fig.text(0.07, 0.84, "Structured training documentation", fontsize=13, color="#5f6b7a")
+
+    meta_ax = fig.add_axes([0.07, 0.54, 0.86, 0.23])
     meta_ax.axis("off")
-    meta_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_ACCENT, linewidth=1.5))
+    meta_ax.add_patch(
+        plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2)
+    )
+    meta_ax.add_patch(
+        plt.Rectangle((0, 0.83), 1, 0.17, facecolor="#f4f9ff", edgecolor=REPORT_BORDER, linewidth=1.2)
+    )
+    meta_ax.text(0.03, 0.915, "Model Information", fontsize=12, fontweight="bold", color=REPORT_ACCENT, va="center")
+
     meta_lines = [
         ("Model Type", "Linear Regression"),
         ("Model Name", artifact_base),
@@ -311,40 +471,41 @@ def _build_cover_page(pp: PdfPages, artifact_base: str, target: str, features: L
         ("Generated At", datetime.now().strftime("%Y-%b-%d %I:%M:%S %p")),
     ]
 
-    y = 0.82
+    y = 0.72
     for label, value in meta_lines:
         meta_ax.text(0.03, y, label, fontsize=11, fontweight="bold", color=REPORT_DARK, va="center")
         meta_ax.text(0.30, y, value, fontsize=11, color=REPORT_DARK, va="center")
-        y -= 0.13
+        y -= 0.11
 
-    # --- Input Features box (bordered) ---
-    feature_text = ", ".join(features) if features else "None"
-    feat_ax = fig.add_axes([0.07, 0.43, 0.86, 0.11])
-    feat_ax.axis("off")
-    feat_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2))
-    feat_ax.text(0.03, 0.82, "Input Features", fontsize=11, fontweight="bold", color=REPORT_ACCENT, va="top")
-    feat_ax.text(0.03, 0.45, feature_text, fontsize=10.5, color=REPORT_DARK, va="top", wrap=True)
-
-    # --- What is Linear Regression? (definition box) ---
-    def_ax = fig.add_axes([0.07, 0.15, 0.86, 0.24])
+    def_ax = fig.add_axes([0.07, 0.30, 0.86, 0.22])
     def_ax.axis("off")
-    def_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=True, facecolor="#f0f7ff", edgecolor=REPORT_BORDER, linewidth=1.2))
-    def_ax.text(0.03, 0.90, "What is Linear Regression?", fontsize=11, fontweight="bold", color=REPORT_ACCENT, va="top")
-    def_lines = [
-        "Linear Regression is a method that finds the best straight-line relationship between your",
-        "input variables (features) and the value you want to predict (target). Think of it as",
-        "drawing a line through your data that best represents how each feature affects the target",
-        "— e.g. how proximity to a university or shop influences property unit value. The model",
-        "learns the weight (coefficient) of each feature, and uses those weights to make predictions.",
-    ]
-    y_def = 0.72
-    for dline in def_lines:
-        def_ax.text(0.03, y_def, dline, fontsize=9.5, color=REPORT_DARK, va="top")
-        y_def -= 0.145
+    def_ax.add_patch(
+        plt.Rectangle((0, 0), 1, 1, fill=True, facecolor="#f0f7ff", edgecolor=REPORT_BORDER, linewidth=1.2)
+    )
+    def_ax.text(0.03, 0.88, "What is Linear Regression?", fontsize=11, fontweight="bold", color=REPORT_ACCENT, va="top")
 
-    _add_footer(fig, artifact_base, "Page 1")
+    definition = (
+        "Linear Regression is a method that estimates how the target value changes based on the "
+        "input variables. In simple terms, it finds the best-fitting straight-line relationship "
+        "between the features and the value you want to predict. Each feature is given a weight "
+        "called a coefficient, and those coefficients are used to compute predictions."
+    )
+
+    _draw_paragraph_in_box(
+        def_ax,
+        definition,
+        x=0.03,
+        y_top=0.68,
+        width_chars=95,
+        fontsize=9.5,
+        color=REPORT_DARK,
+        line_gap=0.14,
+    )
+
+    _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
     plt.close(fig)
+    return page_num + 1
 
 
 def _build_executive_summary_page(
@@ -354,7 +515,8 @@ def _build_executive_summary_page(
     independent_vars: List[str],
     importance: np.ndarray,
     residual_ttest: Dict[str, float],
-):
+    page_num: int,
+) -> int:
     fig = _new_page()
     _add_page_header(fig, "Executive Summary", "Key results and top-level interpretation")
 
@@ -381,23 +543,12 @@ def _build_executive_summary_page(
 
     y = 0.80
     for line in summary_lines:
-        # wrap manually at ~45 chars to stay inside box
-        words = line.split()
-        cur = ""
-        wrapped = []
-        for w in words:
-            if len(cur) + len(w) + 1 > 45:
-                wrapped.append(cur.rstrip())
-                cur = w + " "
-            else:
-                cur += w + " "
-        if cur.strip():
-            wrapped.append(cur.rstrip())
+        wrapped = _wrap_text(line, chars_per_line=42)
         left_ax.text(0.05, y, f"• {wrapped[0]}", fontsize=9.5, color=REPORT_DARK, va="top")
-        sub_y = y - 0.09
+        sub_y = y - 0.10
         for extra in wrapped[1:]:
             left_ax.text(0.08, sub_y, extra, fontsize=9.5, color=REPORT_DARK, va="top")
-            sub_y -= 0.09
+            sub_y -= 0.10
         y = sub_y - 0.04
 
     right_ax = fig.add_axes([0.53, 0.52, 0.40, 0.32])
@@ -419,47 +570,45 @@ def _build_executive_summary_page(
 
     y = 0.80
     for line in residual_lines:
-        words = line.split()
-        cur = ""
-        wrapped = []
-        for w in words:
-            if len(cur) + len(w) + 1 > 42:
-                wrapped.append(cur.rstrip())
-                cur = w + " "
-            else:
-                cur += w + " "
-        if cur.strip():
-            wrapped.append(cur.rstrip())
+        wrapped = _wrap_text(line, chars_per_line=42)
         right_ax.text(0.05, y, f"• {wrapped[0]}", fontsize=9.5, color=REPORT_DARK, va="top")
-        sub_y = y - 0.09
+        sub_y = y - 0.10
         for extra in wrapped[1:]:
             right_ax.text(0.08, sub_y, extra, fontsize=9.5, color=REPORT_DARK, va="top")
-            sub_y -= 0.09
+            sub_y -= 0.10
         y = sub_y - 0.04
 
     rec_ax = fig.add_axes([0.07, 0.19, 0.86, 0.23])
     rec_ax.axis("off")
     rec_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2))
-    rec_ax.text(0.02, 0.84, "Recommended Reading of this Report", fontsize=12,
-                fontweight="bold", color=REPORT_ACCENT)
+    rec_ax.text(0.02, 0.90, "Recommended Reading of this Report", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
+
     rec_text = (
-        "Use the metrics page to evaluate overall fit, the feature page to review standardized "
+        "Use the metrics page to evaluate overall fit, the feature pages to review standardized "
         "effects and coefficient significance, and the diagnostics page to inspect bias and "
         "error behavior. Variable distribution pages provide context for predictor spread."
     )
-    rec_ax.text(0.02, 0.58, rec_text, fontsize=10.5, color=REPORT_DARK, va="top", wrap=True)
+    _draw_wrapped_text(rec_ax, 0.02, 0.68, rec_text, chars_per_line=100, fontsize=10.5, color=REPORT_DARK, line_gap=0.14)
 
-    _add_footer(fig, artifact_base, "Page 2")
+    _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
     plt.close(fig)
+    return page_num + 1
 
 
-def _build_metrics_table_page(pp: PdfPages, artifact_base: str, metrics: Dict[str, float], export_path: str) -> str:
+def _build_metrics_table_page(
+    pp: PdfPages,
+    artifact_base: str,
+    metrics: Dict[str, float],
+    export_path: str,
+    page_num: int,
+) -> Tuple[str, int]:
     fig = _new_page()
     _add_page_header(fig, "Model Performance Metrics", "Core evaluation results")
 
-    ax = fig.add_axes([0.10, 0.60, 0.80, 0.18])
+    ax = fig.add_axes([0.10, 0.63, 0.80, 0.16])
     ax.axis("off")
+
     table = ax.table(
         cellText=[
             ["Metric", "Value", "Interpretation"],
@@ -471,47 +620,58 @@ def _build_metrics_table_page(pp: PdfPages, artifact_base: str, metrics: Dict[st
         loc="center",
         cellLoc="center",
     )
-    table.scale(1, 2.0)
+    table.scale(1, 1.6)
+    _style_table(table, header_fontsize=10, body_fontsize=9)
 
-    for (i, j), cell in table.get_celld().items():
-        cell.set_edgecolor("#222222")
-        cell.set_linewidth(0.8)
-        if i == 0:
-            cell.set_facecolor(REPORT_ACCENT)
-            cell.set_text_props(weight="bold", color="white", fontsize=10)
-        else:
-            cell.set_facecolor("#f5f7fa" if i % 2 == 1 else "white")
-            cell.set_text_props(color=REPORT_DARK, fontsize=10)
-
-    notes_ax = fig.add_axes([0.10, 0.28, 0.80, 0.18])
+    notes_ax = fig.add_axes([0.10, 0.29, 0.80, 0.20])
     notes_ax.axis("off")
     notes_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.0))
-    notes_ax.text(0.03, 0.80, "Interpretation Notes", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
+    notes_ax.text(0.03, 0.86, "Interpretation Notes", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
+
     notes_text = (
         f"This model achieved R² = {metrics['r2']:.4f}. RMSE and MAE should be interpreted "
-        f"relative to the scale of the target variable. Lower values indicate better fit, "
-        f"but diagnostic plots are still needed to assess model behavior."
+        f"relative to the scale of the target variable. Lower values generally indicate better fit, "
+        f"but diagnostic plots are still needed to assess whether the model behaves well across the data range."
     )
-    notes_ax.text(0.03, 0.55, notes_text, fontsize=10.5, color=REPORT_DARK, va="top", wrap=True)
+    _draw_paragraph_in_box(
+        notes_ax,
+        notes_text,
+        x=0.03,
+        y_top=0.62,
+        width_chars=88,
+        fontsize=10.3,
+        color=REPORT_DARK,
+        line_gap=0.15,
+    )
 
-    _add_footer(fig, artifact_base, "Page 3")
+    _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
     out = _save_png(fig, export_path, "metrics_table.png")
     plt.close(fig)
-    return out
+    return out, page_num + 1
 
 
-def _build_feature_importance_page(
+def _build_feature_bar_chart(ax, feat_names: List[str], feat_vals: List[float]):
+    ax.barh(feat_names, feat_vals, color=REPORT_ACCENT, edgecolor="#1f1f1f", linewidth=0.5)
+    ax.set_title("Feature Importance", fontsize=12, fontweight="bold", color=REPORT_ACCENT, pad=10)
+    ax.set_xlabel("Coefficient", fontsize=9)
+    ax.tick_params(axis="y", labelsize=8)
+    ax.tick_params(axis="x", labelsize=8.5)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="x", alpha=0.25)
+    ax.invert_yaxis()
+
+
+def _build_feature_importance_pages(
     pp: PdfPages,
     artifact_base: str,
     independent_vars: List[str],
     importance: np.ndarray,
     coef_ttests: Optional[List[Dict[str, Any]]],
     export_path: str,
-) -> str:
-    fig = _new_page()
-    _add_page_header(fig, "Feature Analysis", "Coefficient importance and significance tests")
-
+    page_num: int,
+) -> Tuple[str, int]:
     sorted_pairs = sorted(
         zip(independent_vars, importance),
         key=lambda x: abs(float(x[1])),
@@ -520,58 +680,71 @@ def _build_feature_importance_page(
     feat_names = [x[0] for x in sorted_pairs]
     feat_vals = [float(x[1]) for x in sorted_pairs]
 
-    n_feats = len(feat_names)
-    # Dynamically size chart height based on number of features
-    bar_height_per_feat = 0.032
-    chart_h = max(0.20, min(0.36, n_feats * bar_height_per_feat))
-    chart_top = 0.56 + (0.36 - chart_h)  # pin to top area
-    chart_ax = fig.add_axes([0.18, chart_top, 0.72, chart_h])
-    chart_ax.barh(feat_names, feat_vals, color=REPORT_ACCENT, edgecolor="#1f1f1f", linewidth=0.5)
-    chart_ax.set_title("Feature Importance", fontsize=13, fontweight="bold", color=REPORT_ACCENT, pad=10)
-    chart_ax.set_xlabel("Coefficient", fontsize=9)
-    chart_ax.tick_params(axis="y", labelsize=8.5)
-    chart_ax.tick_params(axis="x", labelsize=8.5)
-    chart_ax.spines["top"].set_visible(False)
-    chart_ax.spines["right"].set_visible(False)
-    chart_ax.grid(axis="x", alpha=0.25)
-    chart_ax.invert_yaxis()
-
-    table_ax = fig.add_axes([0.10, 0.14, 0.80, 0.30])
-    table_ax.axis("off")
+    preview_fig = _new_page()
+    _add_page_header(preview_fig, "Feature Analysis", "Coefficient importance and significance tests")
+    preview_ax = preview_fig.add_axes([0.18, 0.56, 0.72, 0.28])
+    _build_feature_bar_chart(preview_ax, feat_names, feat_vals)
+    preview_png_path = _save_png(preview_fig, export_path, "feature_importance.png")
+    plt.close(preview_fig)
 
     if coef_ttests:
-        table_data = [["Variable", "Coefficient", "Std Error", "t-stat", "p-value", "Significant"]]
-        for row in coef_ttests:
-            table_data.append([
-                row["variable"],
-                f"{row['coef']:.6f}",
-                f"{row['std_err']:.6f}",
-                f"{row['t']:.4f}",
-                f"{row['p']:.4f}",
-                "Yes" if row["significant"] else "No"
-            ])
+        row_chunks = _chunk_list(coef_ttests, 12)
+    else:
+        row_chunks = [[]]
 
-        table = table_ax.table(cellText=table_data, loc="center", cellLoc="center")
-        table.scale(1, 1.6)
+    for idx, chunk in enumerate(row_chunks):
+        fig = _new_page()
 
-        for (i, j), cell in table.get_celld().items():
-            cell.set_edgecolor("#222222")
-            cell.set_linewidth(0.8)
-            if i == 0:
-                cell.set_facecolor(REPORT_ACCENT)
-                cell.set_text_props(weight="bold", color="white", fontsize=9)
-            else:
-                if j == 5:
-                    cell.set_facecolor("#d1fae5" if table_data[i][5] == "Yes" else "#fee2e2")
-                else:
-                    cell.set_facecolor("#f5f7fa" if i % 2 == 1 else "white")
-                cell.set_text_props(color=REPORT_DARK, fontsize=8.8)
+        if idx == 0:
+            _add_page_header(fig, "Feature Analysis", "Coefficient importance and significance tests")
+            chart_ax = fig.add_axes([0.18, 0.56, 0.72, 0.28])
+            _build_feature_bar_chart(chart_ax, feat_names, feat_vals)
+            table_ax = fig.add_axes([0.08, 0.12, 0.84, 0.36])
+            table_ax.axis("off")
+        else:
+            _add_page_header(fig, "Feature Analysis (Continued)", "Additional coefficient significance rows")
+            table_ax = fig.add_axes([0.08, 0.12, 0.84, 0.74])
+            table_ax.axis("off")
 
-    _add_footer(fig, artifact_base, "Page 4")
-    pp.savefig(fig, facecolor="white")
-    out = _save_png(fig, export_path, "feature_importance.png")
-    plt.close(fig)
-    return out
+        if coef_ttests:
+            table_data = [["Variable", "Coefficient", "Std Error", "t-stat", "p-value", "Significant"]]
+            for row in chunk:
+                table_data.append([
+                    row["variable"],
+                    f"{row['coef']:.6f}",
+                    f"{row['std_err']:.6f}",
+                    f"{row['t']:.4f}",
+                    f"{row['p']:.4f}",
+                    "Yes" if row["significant"] else "No"
+                ])
+
+            col_widths = [0.20, 0.16, 0.16, 0.14, 0.14, 0.12]
+            table = table_ax.table(
+                cellText=table_data,
+                loc="center",
+                cellLoc="center",
+                colWidths=col_widths,
+            )
+
+            table.scale(1, 1.4 if idx == 0 else 1.7)
+            _style_table(table, header_fontsize=8.8, body_fontsize=8.1, significant_col=5)
+        else:
+            table_ax.text(
+                0.5,
+                0.5,
+                "Coefficient t-test details are not available.",
+                ha="center",
+                va="center",
+                fontsize=11,
+                color=REPORT_DARK,
+            )
+
+        _add_footer(fig, artifact_base, f"Page {page_num}")
+        pp.savefig(fig, facecolor="white")
+        plt.close(fig)
+        page_num += 1
+
+    return preview_png_path, page_num
 
 
 def _build_diagnostics_page(
@@ -581,7 +754,8 @@ def _build_diagnostics_page(
     preds: np.ndarray,
     residuals: pd.Series,
     export_path: str,
-) -> Tuple[str, str]:
+    page_num: int,
+) -> Tuple[str, str, int]:
     fig = _new_page()
     _add_page_header(fig, "Prediction Diagnostics", "Observed fit and residual behavior")
 
@@ -607,7 +781,7 @@ def _build_diagnostics_page(
     ax2.legend(fontsize=8)
     ax2.grid(alpha=0.20)
 
-    _add_footer(fig, artifact_base, "Page 5")
+    _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
 
     diag_scatter_path = _save_png(fig, export_path, "actual_vs_predicted.png")
@@ -627,7 +801,7 @@ def _build_diagnostics_page(
     resid_fig.savefig(resid_pred_path, bbox_inches="tight", facecolor="white", dpi=200)
     plt.close(resid_fig)
 
-    return diag_scatter_path, resid_pred_path
+    return diag_scatter_path, resid_pred_path, page_num + 1
 
 
 def _build_residual_distribution_page(
@@ -636,7 +810,8 @@ def _build_residual_distribution_page(
     residuals: pd.Series,
     residual_ttest: Dict[str, float],
     export_path: str,
-) -> str:
+    page_num: int,
+) -> Tuple[str, int]:
     fig = _new_page()
     _add_page_header(fig, "Residual Analysis", "Residual distribution and one-sample t-test")
 
@@ -649,25 +824,34 @@ def _build_residual_distribution_page(
     ax.spines["right"].set_visible(False)
     ax.grid(axis="y", alpha=0.20)
 
-    info_ax = fig.add_axes([0.10, 0.18, 0.80, 0.18])
-    info_ax.axis("off")
-    info_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.0))
-    info_ax.text(0.03, 0.78, "Residual t-test", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
-    info_ax.text(0.03, 0.52, f"T-statistic: {residual_ttest['t_stat']:.4f}", fontsize=10.5, color=REPORT_DARK)
-    info_ax.text(0.03, 0.30, f"P-value: {residual_ttest['p_value']:.4f}", fontsize=10.5, color=REPORT_DARK)
-
     if residual_ttest["p_value"] < 0.05:
         conclusion = "Conclusion: residual mean differs significantly from zero."
     else:
         conclusion = "Conclusion: residual mean is not significantly different from zero."
 
-    info_ax.text(0.42, 0.52, conclusion, fontsize=10.5, color=REPORT_DARK, wrap=True)
+    info_ax = fig.add_axes([0.10, 0.16, 0.80, 0.22])
+    info_ax.axis("off")
+    info_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.0))
+    info_ax.text(0.03, 0.88, "Residual t-test", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
+    info_ax.text(0.03, 0.68, f"T-statistic: {residual_ttest['t_stat']:.4f}", fontsize=10.5, color=REPORT_DARK)
+    info_ax.text(0.03, 0.50, f"P-value: {residual_ttest['p_value']:.4f}", fontsize=10.5, color=REPORT_DARK)
 
-    _add_footer(fig, artifact_base, "Page 6")
+    _draw_paragraph_in_box(
+        info_ax,
+        conclusion,
+        x=0.03,
+        y_top=0.30,
+        width_chars=86,
+        fontsize=10.5,
+        color=REPORT_DARK,
+        line_gap=0.14,
+    )
+
+    _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
     out = _save_png(fig, export_path, "residual_distribution.png")
     plt.close(fig)
-    return out
+    return out, page_num + 1
 
 
 def _build_variable_distribution_pages(
@@ -675,8 +859,8 @@ def _build_variable_distribution_pages(
     artifact_base: str,
     X_train_unscaled: pd.DataFrame,
     independent_vars: List[str],
-):
-    page_num = 7
+    page_num: int,
+) -> int:
     plots_per_page = 2
 
     for start_idx in range(0, len(independent_vars), plots_per_page):
@@ -712,7 +896,9 @@ def _build_variable_distribution_pages(
                     f"Std: {std_val:.2f}"
                 )
                 ax.text(
-                    0.98, 0.95, stats_text,
+                    0.98,
+                    0.95,
+                    stats_text,
                     transform=ax.transAxes,
                     va="top",
                     ha="right",
@@ -721,13 +907,22 @@ def _build_variable_distribution_pages(
                 )
             except Exception as e:
                 ax.axis("off")
-                ax.text(0.5, 0.5, f"Unable to render distribution for {col}\n{str(e)}",
-                        ha="center", va="center", fontsize=11, color=REPORT_DARK)
+                ax.text(
+                    0.5,
+                    0.5,
+                    f"Unable to render distribution for {col}\n{str(e)}",
+                    ha="center",
+                    va="center",
+                    fontsize=11,
+                    color=REPORT_DARK
+                )
 
         _add_footer(fig, artifact_base, f"Page {page_num}")
         pp.savefig(fig, facecolor="white")
         plt.close(fig)
         page_num += 1
+
+    return page_num
 
 
 def _build_final_summary_page(
@@ -739,7 +934,8 @@ def _build_final_summary_page(
     target: str,
     n_samples: int,
     residual_ttest: Dict[str, float],
-):
+    page_num: int,
+) -> int:
     fig = _new_page()
     _add_page_header(fig, "Final Interpretation", "Concise model documentation summary")
 
@@ -755,6 +951,7 @@ def _build_final_summary_page(
     box1.axis("off")
     box1.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_ACCENT, linewidth=1.3))
     box1.text(0.04, 0.88, "Model Summary", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
+
     summary_text = (
         f"Target variable: {target}\n"
         f"Training samples: {n_samples:,}\n"
@@ -791,18 +988,24 @@ def _build_final_summary_page(
     notes = [
         f"This linear regression model was trained using {len(independent_vars)} predictor(s).",
         f"Overall fit should be judged mainly through R² and diagnostic plots. Current R² is {metrics['r2']:.4f}.",
-        f"{residual_note}",
-        "Use this report together with business/domain validation before deployment."
+        residual_note,
+        "Use this report together with business or domain validation before deployment.",
     ]
 
     y = 0.62
     for line in notes:
-        box3.text(0.03, y, f"• {line}", fontsize=10.5, color=REPORT_DARK, va="top", wrap=True)
-        y -= 0.18
+        wrapped = _wrap_text(line, 105)
+        box3.text(0.03, y, f"• {wrapped[0]}", fontsize=10.3, color=REPORT_DARK, va="top")
+        y -= 0.11
+        for extra in wrapped[1:]:
+            box3.text(0.06, y, extra, fontsize=10.3, color=REPORT_DARK, va="top")
+            y -= 0.11
+        y -= 0.02
 
-    _add_footer(fig, artifact_base, "Final Page")
+    _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
     plt.close(fig)
+    return page_num + 1
 
 
 def export_full_report_and_artifacts(
@@ -890,67 +1093,76 @@ def export_full_report_and_artifacts(
 
     pdf_path = os.path.join(export_path, f"{artifact_base}.pdf")
     with PdfPages(pdf_path) as pp:
-        _build_cover_page(
+        page_num = 1
+
+        page_num = _build_cover_page(
             pp=pp,
             artifact_base=artifact_base,
             target=target,
             features=independent_vars,
             n_samples=len(y_train),
+            page_num=page_num,
         )
 
-        _build_executive_summary_page(
+        page_num = _build_executive_summary_page(
             pp=pp,
             artifact_base=artifact_base,
             metrics=metrics,
             independent_vars=independent_vars,
             importance=importance,
             residual_ttest=residual_ttest,
+            page_num=page_num,
         )
 
-        png_paths["metrics"] = _build_metrics_table_page(
+        png_paths["metrics"], page_num = _build_metrics_table_page(
             pp=pp,
             artifact_base=artifact_base,
             metrics=metrics,
             export_path=export_path,
+            page_num=page_num,
         )
 
-        png_paths["feature_importance"] = _build_feature_importance_page(
+        png_paths["feature_importance"], page_num = _build_feature_importance_pages(
             pp=pp,
             artifact_base=artifact_base,
             independent_vars=independent_vars,
             importance=importance,
             coef_ttests=coef_ttests,
             export_path=export_path,
+            page_num=page_num,
         )
 
-        actual_vs_pred_path, residuals_vs_pred_path = _build_diagnostics_page(
+        actual_vs_pred_path, residuals_vs_pred_path, page_num = _build_diagnostics_page(
             pp=pp,
             artifact_base=artifact_base,
             y_test=y_test,
             preds=preds,
             residuals=residuals,
             export_path=export_path,
+            page_num=page_num,
         )
         png_paths["actual_vs_predicted"] = actual_vs_pred_path
         png_paths["residuals_vs_predicted"] = residuals_vs_pred_path
 
-        png_paths["residual_distribution"] = _build_residual_distribution_page(
+        png_paths["residual_distribution"], page_num = _build_residual_distribution_page(
             pp=pp,
             artifact_base=artifact_base,
             residuals=residuals,
             residual_ttest=residual_ttest,
             export_path=export_path,
+            page_num=page_num,
         )
 
         if X_train_unscaled is not None and len(independent_vars) > 0:
-            _build_variable_distribution_pages(
+            page_num = _build_variable_distribution_pages(
                 pp=pp,
                 artifact_base=artifact_base,
                 X_train_unscaled=X_train_unscaled,
                 independent_vars=independent_vars,
+                page_num=page_num,
             )
 
-        _build_final_summary_page(
+        page_num = _build_final_summary_page(
             pp=pp,
             artifact_base=artifact_base,
             metrics=metrics,
@@ -959,6 +1171,7 @@ def export_full_report_and_artifacts(
             target=target,
             n_samples=len(y_train),
             residual_ttest=residual_ttest,
+            page_num=page_num,
         )
 
     t_tests = {"residuals": residual_ttest, "coefficients": coef_ttests}
@@ -1066,8 +1279,17 @@ async def train_linear_regression(
         print(f"Saved model: {os.path.basename(model_path)}")
 
         metrics, png_paths, t_tests, pdf_path = export_full_report_and_artifacts(
-            export_path, model, scaler, indep, target,
-            X_train_scaled, y_train, X_test_scaled, y_test, preds, residuals,
+            export_path,
+            model,
+            scaler,
+            indep,
+            target,
+            X_train_scaled,
+            y_train,
+            X_test_scaled,
+            y_test,
+            preds,
+            residuals,
             X_train_unscaled=X_train,
             artifact_base=artifact_base,
         )
@@ -1222,10 +1444,7 @@ async def train_linear_regression(
         bin_centers = 0.5 * (bins[:-1] + bins[1:])
 
         print("Computing variable distributions...")
-        variable_distributions = compute_variable_distributions(
-            df_valid,
-            indep
-        )
+        variable_distributions = compute_variable_distributions(df_valid, indep)
         print(f"Computed distributions for {len(variable_distributions)} variables")
 
         base_url = "/api/ai-tools/download"
