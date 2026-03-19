@@ -94,23 +94,7 @@ export default function AIToolsModal({
   const resolvedSchema = commonStatus?.context?.schema || null;
   const userSchema = externalSchema || resolvedSchema;
 
-  const loadCommonStatus = async () => {
-    if (!token) {
-      setCommonStatus({ connected: false, context: null });
-      return;
-    }
-    try {
-      setCommonError("");
-      const res = await authFetch(`${API}/common/status`);
-      const data = await res.json();
-      setCommonStatus(data);
-    } catch (e) {
-      setCommonStatus({ connected: false, context: null });
-      setCommonError("Unable to check common connection status.");
-    }
-  };
-
-  const connectCommon = async () => {
+  const connectCommon = async ({ tokenOnly = false } = {}) => {
     if (!token) {
       setCommonError("No token received.");
       return;
@@ -122,7 +106,18 @@ export default function AIToolsModal({
     console.log("🔄 Connecting with schema:", externalSchema);
 
     try {
-      const res = await authFetch(`${API}/common/connect`, { method: "POST" });
+      // When tokenOnly is true, skip the stale X-Target-Schema / X-Target-DB
+      // overrides and let the backend resolve context purely from the token.
+      const headers = { Authorization: `Bearer ${token}` };
+      if (!tokenOnly) {
+        if (userSchema) headers["X-Target-Schema"] = userSchema;
+        if (userDb) headers["X-Target-DB"] = userDb;
+      }
+
+      const res = await fetch(`${API}/common/connect`, {
+        method: "POST",
+        headers,
+      });
 
       let data = null;
       try {
@@ -396,11 +391,22 @@ export default function AIToolsModal({
 
   const hasResults = !!(results.lr || results.rf || results.xgb);
 
-  // --- Effects ---
+  // --- Helper to reset all form/connection state ---
+  const resetAllState = () => {
+    setCommonStatus({ connected: false, context: null });
+    setSelectedTable("");
+    setFields([]);
+    setPreviewRows([]);
+    setPreviewTotal(0);
+    setDependentVar("");
+    setIndependentVars([]);
+    setExcludedIndices([]);
+    setResults({ lr: null, rf: null, xgb: null });
+    setActiveModelTab(null);
+    setAvailableTables([]);
+  };
 
-  useEffect(() => {
-    if (isOpen) loadCommonStatus();
-  }, [isOpen]);
+  // --- Effects ---
 
   useEffect(() => {
     if (userSchema) {
@@ -420,24 +426,22 @@ export default function AIToolsModal({
     }
   }, [dependentVar, independentVars, selectedTable]);
 
+  // FIX: When token changes while modal is already open, reset stale
+  // commonStatus BEFORE reconnecting. Without this, authFetch sends the
+  // old userSchema in X-Target-Schema which overrides the new token's
+  // claims on the backend, causing the "stuck on old LGU" bug.
   useEffect(() => {
     if (!isOpen) {
-      setCommonStatus({ connected: false, context: null });
-      setSelectedTable("");
-      setFields([]);
-      setPreviewRows([]);
-      setPreviewTotal(0);
-      setDependentVar("");
-      setIndependentVars([]);
-      setExcludedIndices([]);
-      setResults({ lr: null, rf: null, xgb: null });
-      setActiveModelTab(null);
-      setAvailableTables([]);
+      resetAllState();
       return;
     }
 
     if (token) {
-      connectCommon();
+      // Clear stale connection context so the UI resets for the new LGU.
+      resetAllState();
+      // Use tokenOnly so the connect call does NOT send stale
+      // X-Target-Schema / X-Target-DB from the previous render.
+      connectCommon({ tokenOnly: true });
     }
   }, [isOpen, token]);
 
@@ -453,28 +457,20 @@ export default function AIToolsModal({
     setActiveModelTab(null);
   }, [userSchema]);
 
-  if (!isOpen) return null;
-
+  // NOTE: Moved above the early return so React hooks are always called
+  // in the same order (hooks must not be conditional / after early returns).
   useEffect(() => {
     if (shouldDisconnect) {
       console.log("🔌 Handling disconnect signal from parent");
 
-      setCommonStatus({ connected: false, context: null });
-      setSelectedTable("");
-      setFields([]);
-      setPreviewRows([]);
-      setPreviewTotal(0);
-      setDependentVar("");
-      setIndependentVars([]);
-      setExcludedIndices([]);
-      setResults({ lr: null, rf: null, xgb: null });
-      setActiveModelTab(null);
-      setAvailableTables([]);
+      resetAllState();
       setCommonError("");
 
       console.log("✅ AI Tools state cleared");
     }
   }, [shouldDisconnect]);
+
+  if (!isOpen) return null;
 
   // --- Render ---
 

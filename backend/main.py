@@ -61,14 +61,17 @@ async def attach_ctx(request: Request, call_next):
     """
     auth = request.headers.get("Authorization", "")
     x_target_schema = request.headers.get("X-Target-Schema", "")
+    x_target_db = request.headers.get("X-Target-DB", "")
 
     try:
         if auth.lower().startswith("bearer "):
             token = auth.split(" ", 1)[1].strip()
             try:
-                ctx = resolve_common_context_from_token(token)
-                if x_target_schema:
-                    ctx["schema"] = x_target_schema
+                ctx = resolve_common_context_from_token(
+                    token,
+                    db_override=(x_target_db or None),
+                    schema_override=(x_target_schema or None),
+                )
                 set_request_context(ctx)
             except Exception:
                 # wag hard-fail, kasi may endpoints na di need auth

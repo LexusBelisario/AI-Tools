@@ -17,7 +17,9 @@ export default function RunSavedTabUI({
 
   // === DATA INPUT STATE ===
   const [inputSource, setInputSource] = useState("db"); // "db" or "file"
-  const [tableName, setTableName] = useState("LandParcel");
+  const [tableName, setTableName] = useState("");
+  const [availableTables, setAvailableTables] = useState([]);
+  const [loadingTables, setLoadingTables] = useState(false);
   const [shapefiles, setShapefiles] = useState([]);
   const [zipFile, setZipFile] = useState(null);
 
@@ -101,6 +103,44 @@ export default function RunSavedTabUI({
     }
   };
 
+  const loadAvailableTables = async () => {
+    if (!userSchema) return;
+
+    setLoadingTables(true);
+
+    try {
+      const fd = new FormData();
+      fd.append("schema", userSchema);
+
+      const res = await authFetch(`${API}/ai-tools/list-all-tables`, {
+        method: "POST",
+        body: fd,
+      });
+
+      if (!res.ok) {
+        await res.text();
+        setAvailableTables([]);
+        return;
+      }
+
+      const data = await res.json();
+
+      if (data.tables && data.tables.length > 0) {
+        setAvailableTables(data.tables);
+        // Auto-select first table if nothing is selected yet
+        if (!tableName) {
+          setTableName(data.tables[0]);
+        }
+      } else {
+        setAvailableTables([]);
+      }
+    } catch (err) {
+      setAvailableTables([]);
+    } finally {
+      setLoadingTables(false);
+    }
+  };
+
   // Load models when DB source is selected
   useEffect(() => {
     if (modelSource === "db") {
@@ -108,6 +148,14 @@ export default function RunSavedTabUI({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelSource, userSchema, token, resolvedUserDb]);
+
+  // Load available tables when schema is ready
+  useEffect(() => {
+    if (userSchema && inputSource === "db") {
+      loadAvailableTables();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userSchema, inputSource, token]);
 
   const handleModelFileChange = (e) => {
     const file = e.target.files[0];
@@ -149,6 +197,10 @@ export default function RunSavedTabUI({
 
     if (inputSource === "db" && !userSchema) {
       setError("No schema selected. Please connect to Common Database first.");
+      return;
+    }
+    if (inputSource === "db" && !tableName) {
+      setError("Please select a table from the database.");
       return;
     }
     if (inputSource === "file" && shapefiles.length === 0 && !zipFile) {
@@ -209,7 +261,7 @@ export default function RunSavedTabUI({
     setZipFile(null);
     setResult(null);
     setError(null);
-    setTableName("LandParcel");
+    setTableName(availableTables.length > 0 ? availableTables[0] : "");
   };
 
   return (
@@ -246,67 +298,60 @@ export default function RunSavedTabUI({
                 </div>
               </div>
               <div className="blgf-ai-model-desc">
-                Upload a local .pkl model file.
+                Upload a .pkl model file from your device.
               </div>
             </div>
           </div>
 
-          <div className="blgf-ai-card">
-            {modelSource === "db" ? (
-              <>
-                <div className="blgf-ai-label">Select Saved Model</div>
-
-                {loadingModels ? (
-                  <div className="blgf-ai-helper-text">Loading models...</div>
-                ) : (
-                  <>
-                    <select
-                      value={selectedDbModel}
-                      onChange={(e) => setSelectedDbModel(e.target.value)}
-                      className="blgf-ai-select"
-                      disabled={availableModels.length === 0}
-                    >
-                      <option value="">-- Select a model --</option>
-                      {availableModels.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.display_name}
-                        </option>
-                      ))}
-                    </select>
-
-                    {availableModels.length === 0 && !loadingModels && (
-                      <div
-                        className="blgf-ai-helper-text error"
-                        style={{ marginTop: "10px" }}
-                      >
-                        No saved models found in Common Database. Train a model
-                        first.
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="blgf-ai-label">Upload Model (.pkl)</div>
-                <input
-                  type="file"
-                  accept=".pkl"
-                  onChange={handleModelFileChange}
+          {modelSource === "db" && (
+            <>
+              <div className="blgf-ai-label">Select Model</div>
+              {loadingModels ? (
+                <div className="blgf-ai-helper-text">Loading models...</div>
+              ) : availableModels.length === 0 ? (
+                <div className="blgf-ai-helper-text">
+                  No saved models found. Train a model first.
+                </div>
+              ) : (
+                <select
+                  value={selectedDbModel}
+                  onChange={(e) => setSelectedDbModel(e.target.value)}
                   className="blgf-ai-select"
-                  style={{ padding: "10px" }}
-                />
-                {modelFile && (
-                  <div
-                    className="blgf-ai-filelist"
-                    style={{ marginTop: "10px" }}
-                  >
-                    <span>{modelFile.name}</span>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+                >
+                  <option value="">-- Select a model --</option>
+                  {availableModels.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.model_name} ({model.model_type?.toUpperCase()})
+                      {model.created_at
+                        ? ` — ${new Date(model.created_at).toLocaleDateString()}`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </>
+          )}
+
+          {modelSource === "upload" && (
+            <>
+              <div className="blgf-ai-label">Upload Model (.pkl)</div>
+              <input
+                type="file"
+                accept=".pkl"
+                onChange={handleModelFileChange}
+                className="blgf-ai-select"
+                style={{ padding: "10px" }}
+              />
+              {modelFile && (
+                <div
+                  className="blgf-ai-filelist"
+                  style={{ marginTop: "10px" }}
+                >
+                  <span>{modelFile.name}</span>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {/* STEP 2 */}
@@ -319,15 +364,14 @@ export default function RunSavedTabUI({
             >
               <div className="blgf-ai-model-card-header">
                 <span className="blgf-ai-model-name">
-                  Common Database (LandParcel)
+                  Common Database
                 </span>
                 <div className="blgf-ai-checkbox-indicator">
                   {inputSource === "db" && "✓"}
                 </div>
               </div>
               <div className="blgf-ai-model-desc">
-                Use the existing 'LandParcel' table in the Common Database
-                schema.
+                Select a table from the Common Database schema.
               </div>
             </div>
 
@@ -372,14 +416,26 @@ export default function RunSavedTabUI({
                 </div>
 
                 <div className="blgf-ai-label">Select Table</div>
-                <select
-                  value={tableName}
-                  onChange={(e) => setTableName(e.target.value)}
-                  className="blgf-ai-select"
-                >
-                  <option value="LandParcel">LandParcel</option>
-                  <option value="Training_Table">Training_Table</option>
-                </select>
+                {loadingTables ? (
+                  <div className="blgf-ai-helper-text">Loading tables...</div>
+                ) : availableTables.length === 0 ? (
+                  <div className="blgf-ai-helper-text">
+                    No tables found in this schema.
+                  </div>
+                ) : (
+                  <select
+                    value={tableName}
+                    onChange={(e) => setTableName(e.target.value)}
+                    className="blgf-ai-select"
+                  >
+                    <option value="">-- Select a table --</option>
+                    {availableTables.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </>
             )}
           </div>

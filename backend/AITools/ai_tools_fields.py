@@ -2,7 +2,6 @@ from fastapi import APIRouter, UploadFile, Form
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from typing import List
-import pandas as pd
 
 from AITools.ai_utils import (
     gdf_from_zip_or_parts,
@@ -112,6 +111,42 @@ async def ai_list_training_tables(schema: str = Form(...)):
                 WHERE table_schema = :schema
                   AND table_type = 'BASE TABLE'
                   AND LOWER(table_name) LIKE '%training_table%'
+                ORDER BY table_name
+                """
+            )
+
+            rows = db_session.execute(q, {"schema": schema}).fetchall()
+            tables = [r[0] for r in rows]
+
+            return {
+                "tables": tables,
+                "schema": schema,
+            }
+
+        finally:
+            db_session.close()
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ------------------------------------------------------------
+# 🔹 5. Get ALL tables in a schema (for Run Saved tab)
+# ------------------------------------------------------------
+@router.post("/list-all-tables")
+async def ai_list_all_tables(schema: str = Form(...)):
+    """List all base tables in a schema (no filter)"""
+    try:
+        provincial_code = get_provincial_code_from_schema(schema)
+        db_session = get_user_database_session(provincial_code)
+
+        try:
+            q = text(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = :schema
+                  AND table_type = 'BASE TABLE'
                 ORDER BY table_name
                 """
             )

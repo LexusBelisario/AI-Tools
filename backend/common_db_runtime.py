@@ -84,7 +84,7 @@ def _decode_token(token: str) -> Dict[str, Any]:
     alg = _jwt_alg()
 
     if not secret:
-        raise HTTPException(status_code=500, detail="JWT secret not configured (.e  )")
+        raise HTTPException(status_code=500, detail="JWT secret not configured (.env)")
 
     try:
         return jwt.decode(token, secret, algorithms=[alg])
@@ -93,28 +93,34 @@ def _decode_token(token: str) -> Dict[str, Any]:
 
 
 # =========================
-# Validate db/schema exist
+# Validation cache
 # =========================
+# Caches successful validation results so repeated calls (middleware +
+# route handler, or multiple requests for the same LGU) don't each
+# open fresh connections to verify the same db/schema.
+_VALID_DB_CACHE: set = set()        # set of db_name strings
+_VALID_SCHEMA_CACHE: set = set()    # set of (db_name, schema_name) tuples
+
+
 def _validate_database_exists(db_name: str) -> bool:
     """
     Check if a database with the exact name exists in PostgreSQL.
+    Uses a cached engine to the 'postgres' database and caches results.
     """
+    if db_name in _VALID_DB_CACHE:
+        return True
+
     try:
-        host = _env("COMMON_DB_HOST")
-        port = _env("COMMON_DB_PORT", "5432")
-        user = _env("COMMON_DB_USER")
-        password = _env("COMMON_DB_PASSWORD")
-        sslmode = _env("COMMON_DB_SSLMODE", "require")
-
-        url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/postgres?sslmode={sslmode}"
-        temp_engine = create_engine(url, pool_pre_ping=True)
-
-        with temp_engine.connect() as conn:
+        engine = _get_engine("postgres")
+        with engine.connect() as conn:
             result = conn.execute(
                 text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
                 {"db_name": db_name},
             )
-            return result.fetchone() is not None
+            if result.fetchone() is not None:
+                _VALID_DB_CACHE.add(db_name)
+                return True
+            return False
     except Exception as e:
         print(f"Warning: Could not validate database '{db_name}': {e}")
         return False
@@ -123,7 +129,12 @@ def _validate_database_exists(db_name: str) -> bool:
 def _validate_schema_exists(db_name: str, schema_name: str) -> bool:
     """
     Check if a schema with the exact name exists in the given database.
+    Caches results so repeated calls are instant.
     """
+    cache_key = (db_name, schema_name)
+    if cache_key in _VALID_SCHEMA_CACHE:
+        return True
+
     try:
         engine = _get_engine(db_name)
         with engine.connect() as conn:
@@ -131,7 +142,10 @@ def _validate_schema_exists(db_name: str, schema_name: str) -> bool:
                 text("SELECT 1 FROM information_schema.schemata WHERE schema_name = :schema_name"),
                 {"schema_name": schema_name},
             )
-            return result.fetchone() is not None
+            if result.fetchone() is not None:
+                _VALID_SCHEMA_CACHE.add(cache_key)
+                return True
+            return False
     except Exception as e:
         print(f"Warning: Could not validate schema '{schema_name}' in '{db_name}': {e}")
         return False
@@ -190,7 +204,6 @@ def resolve_common_context_from_token(
             detail=f"Schema '{schema}' does not exist in database '{db_name}'.",
         )
 
-    print(f"✅ Resolved: db={db_name}, schema={schema}, user={user}")
     return {"db": str(db_name), "schema": str(schema), "user": user}
 
 
