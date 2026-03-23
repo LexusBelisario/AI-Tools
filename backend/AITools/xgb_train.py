@@ -6,12 +6,7 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 import tempfile, os, pickle, json, zipfile
-from AITools.pdf_summary_generator import generate_model_summary_page
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import seaborn as sns
-from matplotlib.backends.backend_pdf import PdfPages
+from AITools.xgb_print_handler import export_xgb_report_and_artifacts
 from xgboost import XGBRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
@@ -48,397 +43,6 @@ def wrap_plot_urls(plots: Dict[str, Optional[str]], prefix: str) -> Dict[str, Op
         for key, path in plots.items()
     }
 
-
-def plot_feature_importance(importance: np.ndarray, feature_names: List[str], ax=None):
-    """Plot feature importances as a horizontal bar chart."""
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(8, max(4, len(feature_names) * 0.4)))
-    else:
-        fig = ax.figure
-
-    sorted_idx = np.argsort(importance)
-    sorted_importance = importance[sorted_idx]
-    sorted_features = [feature_names[i] for i in sorted_idx]
-
-    ax.barh(range(len(sorted_importance)), sorted_importance)
-    ax.set_yticks(range(len(sorted_features)))
-    ax.set_yticklabels(sorted_features)
-    ax.set_xlabel("Feature Importance")
-    ax.set_title("XGBoost Feature Importance")
-    fig.tight_layout()
-    return fig, ax
-
-
-def plot_residual_distribution(residuals: np.ndarray, ax=None):
-    """Plot the distribution of residuals with a histogram + KDE."""
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(6, 4))
-    else:
-        fig = ax.figure
-
-    sns.histplot(residuals, kde=True, ax=ax)
-    ax.set_title("Residual Distribution (XGBoost)")
-    ax.set_xlabel("Residual")
-    fig.tight_layout()
-    return fig, ax
-
-
-def plot_actual_vs_predicted(y_test: np.ndarray, y_pred: np.ndarray, ax=None):
-    """Scatter plot: actual vs predicted."""
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(6, 6))
-    else:
-        fig = ax.figure
-
-    ax.scatter(y_test, y_pred, alpha=0.6)
-    min_val = min(np.min(y_test), np.min(y_pred))
-    max_val = max(np.max(y_test), np.max(y_pred))
-    ax.plot([min_val, max_val], [min_val, max_val], 'r--', label="Perfect Prediction")
-    ax.set_xlabel("Actual")
-    ax.set_ylabel("Predicted")
-    ax.set_title("Actual vs Predicted (XGBoost)")
-    ax.legend()
-    fig.tight_layout()
-    return fig, ax
-
-
-def plot_residuals_vs_predicted(y_pred: np.ndarray, residuals: np.ndarray, ax=None):
-    """Scatter plot of residuals vs predicted."""
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(6, 4))
-    else:
-        fig = ax.figure
-
-    ax.scatter(y_pred, residuals, alpha=0.6)
-    ax.axhline(0, color="red", linestyle="--")
-    ax.set_xlabel("Predicted")
-    ax.set_ylabel("Residual")
-    ax.set_title("Residuals vs Predicted (XGBoost)")
-    fig.tight_layout()
-    return fig, ax
-
-
-def export_xgb_report_and_artifacts(
-    export_path: str,
-    model: XGBRegressor,
-    scaler,
-    X_train: np.ndarray,
-    X_test: np.ndarray,
-    y_train: np.ndarray,
-    y_test: np.ndarray,
-    y_pred: np.ndarray,
-    feature_names: List[str],
-    df_full: pd.DataFrame,
-    df_valid: pd.DataFrame,
-    indep: List[str],
-    target: str,
-    excluded_indices: List[int],
-    is_db_mode: bool,
-    schema: Optional[str],
-    table_name: Optional[str],
-    file_gdf: Optional[gpd.GeoDataFrame] = None,
-    artifact_base: str = "XGB",
-) -> Dict[str, Any]:
-    os.makedirs(export_path, exist_ok=True)
-    plots_dir = os.path.join(export_path, "plots")
-    os.makedirs(plots_dir, exist_ok=True)
-
-    # 1️⃣ Compute metrics
-    mse = mean_squared_error(y_test, y_pred)
-    rmse = np.sqrt(mse)
-    mae = mean_absolute_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
-
-    metrics = {
-        "MSE": mse,
-        "RMSE": rmse,
-        "MAE": mae,
-        "R²": r2,
-    }
-
-    # 2️⃣ Feature importance
-    importance = getattr(model, "feature_importances_", None)
-    if importance is not None:
-        fig_fi, ax_fi = plot_feature_importance(importance, feature_names)
-        fi_path = os.path.join(plots_dir, "feature_importance.png")
-        fig_fi.savefig(fi_path, dpi=200)
-        plt.close(fig_fi)
-    else:
-        fi_path = None
-
-    # 3️⃣ Residual plots
-    residuals = y_test - y_pred
-
-    fig_rd, ax_rd = plot_residual_distribution(residuals)
-    rd_path = os.path.join(plots_dir, "residual_distribution.png")
-    fig_rd.savefig(rd_path, dpi=200)
-    plt.close(fig_rd)
-
-    fig_avp, ax_avp = plot_actual_vs_predicted(y_test, y_pred)
-    avp_path = os.path.join(plots_dir, "actual_vs_predicted.png")
-    fig_avp.savefig(avp_path, dpi=200)
-    plt.close(fig_avp)
-
-    fig_rvp, ax_rvp = plot_residuals_vs_predicted(y_pred, residuals)
-    rvp_path = os.path.join(plots_dir, "residuals_vs_predicted.png")
-    fig_rvp.savefig(rvp_path, dpi=200)
-    plt.close(fig_rvp)
-
-    # 4️⃣ PDF report (STYLED LIKE LR)
-    accent = "#1e88e5"
-    pdf_path = os.path.join(export_path, f"{artifact_base}.pdf")
-    
-    with PdfPages(pdf_path) as pp:
-        # ========== METRICS TABLE ==========
-        fig, ax = plt.subplots(figsize=(6, 1.5))
-        ax.axis("off")
-
-        table = ax.table(
-            cellText=[
-                ["Model", "MSE", "MAE", "RMSE", "R²"],
-                ["XGBoost", f"{mse:.2f}", f"{mae:.2f}", f"{rmse:.2f}", f"{r2:.2f}"],
-            ],
-            loc="center",
-            cellLoc="center",
-        )
-        table.scale(1, 2)
-
-        for (i, j), cell in table.get_celld().items():
-            if i == 0:
-                cell.set_facecolor(accent)
-                cell.set_text_props(weight="bold", color="white")
-            else:
-                cell.set_facecolor("#f0f0f0")
-
-        pp.savefig(fig, facecolor="white")
-        plt.close(fig)
-
-        # ========== FEATURE IMPORTANCE ==========
-        if importance is not None:
-            fig, ax = plt.subplots(figsize=(8, max(4, len(feature_names) * 0.3)))
-            
-            sorted_idx = np.argsort(importance)
-            sorted_importance = importance[sorted_idx]
-            sorted_features = [feature_names[i] for i in sorted_idx]
-            
-            ax.barh(range(len(sorted_importance)), sorted_importance, color=accent)
-            ax.set_yticks(range(len(sorted_features)))
-            ax.set_yticklabels(sorted_features)
-            ax.set_xlabel("Feature Importance", fontsize=11)
-            ax.set_title("Feature Importance (XGBoost)", color=accent, fontsize=13, weight='bold', pad=10)
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            plt.tight_layout()
-            pp.savefig(fig, facecolor="white")
-            plt.close(fig)
-
-        # ========== RESIDUAL DISTRIBUTION ==========
-        fig, ax = plt.subplots(figsize=(6, 4))
-        sns.histplot(residuals, kde=True, ax=ax, color=accent, edgecolor="black")
-        ax.set_title("Residual Distribution (XGBoost)", color=accent, fontsize=13, weight='bold', pad=10)
-        ax.set_xlabel("Residual", fontsize=11)
-        ax.set_ylabel("Frequency", fontsize=11)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        plt.tight_layout()
-        pp.savefig(fig, facecolor="white")
-        plt.close(fig)
-
-        # ========== ACTUAL VS PREDICTED ==========
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.scatter(y_test, y_pred, alpha=0.6, color=accent, edgecolor="black", linewidth=0.5)
-        min_val = min(np.min(y_test), np.min(y_pred))
-        max_val = max(np.max(y_test), np.max(y_pred))
-        ax.plot([min_val, max_val], [min_val, max_val], "k--", lw=1.5, label="Perfect Prediction")
-        ax.set_xlabel("Actual Values", fontsize=11)
-        ax.set_ylabel("Predicted Values", fontsize=11)
-        ax.set_title("Actual vs Predicted Scatter Plot", color=accent, fontsize=13, weight='bold', pad=10)
-        ax.legend()
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        plt.tight_layout()
-        pp.savefig(fig, facecolor="white")
-        plt.close(fig)
-
-        # ========== RESIDUALS VS PREDICTED ==========
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.scatter(y_pred, residuals, alpha=0.6, color="#e53935", edgecolor="black", linewidth=0.5)
-        ax.axhline(y=0, color="black", linestyle="--", linewidth=1.5, label="Zero Line")
-        ax.set_xlabel("Predicted Values", fontsize=11)
-        ax.set_ylabel("Residuals (Actual - Predicted)", fontsize=11)
-        ax.set_title("Residuals vs Predicted Values", color="#e53935", fontsize=13, weight='bold', pad=10)
-        ax.legend()
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        plt.tight_layout()
-        pp.savefig(fig, facecolor="white")
-        plt.close(fig)
-
-        # ========== VARIABLE DISTRIBUTIONS ==========
-        print("   📊 Adding variable distribution pages...")
-        for col in indep:
-            try:
-                col_data = df_valid[col].dropna()
-                if len(col_data) == 0:
-                    print(f"      ⚠️ No data for {col}, skipping")
-                    continue
-                
-                fig, ax = plt.subplots(figsize=(6, 4))
-                sns.histplot(col_data, kde=True, ax=ax, color=accent, edgecolor="black", bins=30)
-                ax.set_title(f"Distribution of {col}", color=accent, fontsize=13, weight='bold', pad=10)
-                ax.set_xlabel(col, fontsize=11)
-                ax.set_ylabel("Frequency", fontsize=11)
-                ax.spines['top'].set_visible(False)
-                ax.spines['right'].set_visible(False)
-                
-                mean_val = col_data.mean()
-                median_val = col_data.median()
-                std_val = col_data.std()
-                stats_text = f"Mean: {mean_val:.2f}\nMedian: {median_val:.2f}\nStd: {std_val:.2f}"
-                ax.text(0.98, 0.97, stats_text,
-                        transform=ax.transAxes,
-                        verticalalignment='top',
-                        horizontalalignment='right',
-                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor=accent),
-                        fontsize=9)
-                
-                plt.tight_layout()
-                pp.savefig(fig, facecolor="white")
-                plt.close(fig)
-                print(f"      ✅ Added distribution for {col}")
-                
-            except Exception as e:
-                print(f"      ⚠️ Could not create distribution for {col}: {e}")
-                continue
-        
-        if importance is not None:
-            generate_model_summary_page(
-                pp=pp,
-                model_type="XGBoost",
-                metrics=metrics,
-                features=feature_names,
-                importance_values=importance,
-                target_variable=target,
-                n_samples=len(y_train),
-                accent_color=accent
-            )
-            
-    print(f"   ✅ PDF report saved: {pdf_path}")
-
-    # Save model
-    model_path = os.path.join(export_path, f"{artifact_base}.pkl")
-    with open(model_path, "wb") as f:
-        pickle.dump(
-            {
-                "model": model,
-                "scaler": scaler,
-                "features": feature_names,
-                "target": target,
-                "model_type": "xgb",
-                "trained_at": datetime.now().isoformat(),
-            },
-            f,
-        )
-    print(f"Saved model: {os.path.basename(model_path)}")
-
-    #Export CSV
-    preds_valid = model.predict(
-        scaler.transform(df_valid[indep]) if scaler else df_valid[indep].values
-    )
-
-    df_valid = df_valid.copy()
-
-    pin_series, _ = extract_pin_column(df_full)
-
-    if pin_series is not None:
-        try:
-            df_valid["PIN"] = pin_series.iloc[df_valid.index].values
-        except Exception as e:
-            print("⚠ PIN injection failed:", e)
-
-    df_valid["prediction"] = preds_valid
-
-    cols = []
-    if "PIN" in df_valid.columns:
-        cols.append("PIN")
-    cols.extend(indep)
-    cols.append(target)
-    cols.append("prediction")
-
-    csv_path = os.path.join(export_path, f"{artifact_base}.csv")
-    df_valid[cols].to_csv(csv_path, index=False)
-    print(f"✅ Exported CSV: {csv_path}")
-
-    # 7️⃣ Export shapefile
-    zip_out = None
-    try:
-        if '__original_index__' in df_valid.columns:
-            original_indices = df_valid['__original_index__'].tolist()
-            print(f"🔍 Using original indices: {original_indices[:10]}...")
-        else:
-            original_indices = df_valid.index.tolist()
-            print(f"⚠️ '__original_index__' not found")
-
-        if is_db_mode:
-            print("✅ Database mode: fetching geometry")
-            gdf_db = gdf_from_db_with_geometry(schema, table_name)
-            valid_gdf = gdf_db.iloc[original_indices].copy()
-            
-            if pin_series is not None:
-                upsert_pin_field(valid_gdf, pin_series.iloc[original_indices].values)
-            drop_duplicate_pin_fields(valid_gdf)
-            
-            valid_gdf[target] = df_valid[target].values
-            valid_gdf["prediction"] = df_valid["prediction"].values
-            
-        elif file_gdf is not None:
-            print("✅ File mode: using uploaded geometry")
-            valid_gdf = file_gdf.iloc[original_indices].copy()
-            
-            if pin_series is not None:
-                try:
-                    valid_gdf["PIN"] = pin_series.iloc[original_indices].values
-                except Exception as e:
-                    print(f"   ⚠️ Could not add PIN: {e}")
-            
-            valid_gdf[target] = df_valid[target].values
-            valid_gdf["prediction"] = df_valid["prediction"].values
-        else:
-            raise ValueError("No geometry source available")
-
-        shp_pred_dir = os.path.join(export_path, "predicted_shapefile")
-        os.makedirs(shp_pred_dir, exist_ok=True)
-        shp_pred_path = os.path.join(shp_pred_dir, "XGBoost_Predicted.shp")
-        valid_gdf = valid_gdf.drop(columns=['__original_index__'], errors='ignore')
-        valid_gdf.to_file(shp_pred_path)
-
-        zip_out = os.path.join(export_path, "XGBoost_Predicted.zip")
-        with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
-            for f in os.listdir(shp_pred_dir):
-                z.write(os.path.join(shp_pred_dir, f), f)
-
-    except Exception as e:
-        print(f"⚠️ Shapefile export error: {e}")
-
-    plots = {
-        "feature_importance": fi_path,
-        "residual_distribution": rd_path,
-        "actual_vs_predicted": avp_path,
-        "residuals_vs_predicted": rvp_path,
-    }
-
-    downloads = {
-        "model": model_path,
-        "report": pdf_path,
-        "cama_csv": csv_path,
-        "shapefile": zip_out,
-    }
-
-    return {
-        "metrics": metrics,
-        "plots": plots,
-        "downloads": downloads,
-    }
 
 @router.post("/train")
 async def train_xgb_model(
@@ -569,32 +173,107 @@ async def train_xgb_model(
         os.makedirs(export_path, exist_ok=True)
         print(f"Creating export: {artifact_base}")
 
-        artifacts = export_xgb_report_and_artifacts(
+        metrics, png_paths, pdf_path = export_xgb_report_and_artifacts(
             export_path=export_path,
             model=model,
             scaler=scaler,
+            feature_names=indep,
+            target=target,
             X_train=X_train_scaled,
-            X_test=X_test_scaled,
             y_train=y_train,
+            X_test=X_test_scaled,
             y_test=y_test,
             y_pred=y_pred,
-            feature_names=indep,
-            df_full=df_full,
             df_valid=df_valid,
-            indep=indep,
-            target=target,
-            excluded_indices=[],
-            is_db_mode=is_db_mode,
-            schema=schema,
-            table_name=table_name,
-            file_gdf=file_gdf,
+            scaler_choice=scaler_choice,
             artifact_base=artifact_base,
         )
 
-        plots = artifacts["plots"]
-        downloads = artifacts["downloads"]
-        metrics = artifacts["metrics"]
-        
+        plots = png_paths
+
+        # Save model
+        model_path = os.path.join(export_path, f"{artifact_base}.pkl")
+        with open(model_path, "wb") as f:
+            pickle.dump(
+                {
+                    "model": model,
+                    "scaler": scaler,
+                    "features": indep,
+                    "target": target,
+                    "model_type": "xgb",
+                    "trained_at": datetime.now().isoformat(),
+                },
+                f,
+            )
+        print(f"Saved model: {os.path.basename(model_path)}")
+
+        # Export CSV
+        preds_valid = model.predict(
+            scaler.transform(df_valid[indep]) if scaler else df_valid[indep].values
+        )
+        df_export = df_valid.copy()
+        if pin_series is not None:
+            try:
+                df_export["PIN"] = pin_series.iloc[df_export.index].values
+            except Exception as e:
+                print(f"⚠ PIN injection failed: {e}")
+        df_export["prediction"] = preds_valid
+        csv_cols = []
+        if "PIN" in df_export.columns:
+            csv_cols.append("PIN")
+        csv_cols.extend(indep)
+        csv_cols.extend([target, "prediction"])
+        csv_path = os.path.join(export_path, f"{artifact_base}.csv")
+        df_export[csv_cols].to_csv(csv_path, index=False)
+        print(f"Exported CSV: {csv_path}")
+
+        # Export shapefile
+        zip_out = None
+        try:
+            original_indices = (
+                df_valid["__original_index__"].tolist()
+                if "__original_index__" in df_valid.columns
+                else df_valid.index.tolist()
+            )
+            if is_db_mode:
+                gdf_db = gdf_from_db_with_geometry(schema, table_name)
+                valid_gdf = gdf_db.iloc[original_indices].copy()
+                if pin_series is not None:
+                    upsert_pin_field(valid_gdf, pin_series.iloc[original_indices].values)
+                drop_duplicate_pin_fields(valid_gdf)
+                valid_gdf[target] = df_valid[target].values
+                valid_gdf["prediction"] = df_export["prediction"].values
+            elif file_gdf is not None:
+                valid_gdf = file_gdf.iloc[original_indices].copy()
+                if pin_series is not None:
+                    try:
+                        valid_gdf["PIN"] = pin_series.iloc[original_indices].values
+                    except Exception as e:
+                        print(f"⚠️ Could not add PIN: {e}")
+                valid_gdf[target] = df_valid[target].values
+                valid_gdf["prediction"] = df_export["prediction"].values
+            else:
+                raise ValueError("No geometry source available")
+
+            shp_pred_dir = os.path.join(export_path, "predicted_shapefile")
+            os.makedirs(shp_pred_dir, exist_ok=True)
+            shp_pred_path = os.path.join(shp_pred_dir, "XGBoost_Predicted.shp")
+            valid_gdf = valid_gdf.drop(columns=["__original_index__"], errors="ignore")
+            valid_gdf.to_file(shp_pred_path)
+            zip_out = os.path.join(export_path, "XGBoost_Predicted.zip")
+            with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
+                for fname in os.listdir(shp_pred_dir):
+                    z.write(os.path.join(shp_pred_dir, fname), fname)
+        except Exception as e:
+            print(f"⚠️ Shapefile export error: {e}")
+
+        downloads = {
+            "model":    model_path,
+            "report":   pdf_path,
+            "cama_csv": csv_path,
+            "shapefile": zip_out,
+        }
+
         # Interactive data
         residuals = y_test - y_pred
         counts, bin_edges = np.histogram(residuals, bins=20)
