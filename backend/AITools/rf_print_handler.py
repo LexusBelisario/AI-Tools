@@ -76,10 +76,19 @@ def _save_png(fig, export_path: str, filename: str) -> str:
     return out
 
 
-def _wrap_text(text: str, chars_per_line: int) -> List[str]:
+
+# ---------------------------------------------------------------------------
+# Physical layout constants
+# ---------------------------------------------------------------------------
+_FIG_W_IN   = 8.27
+_FIG_H_IN   = 11.69
+_CHAR_W_10  = 0.069
+_LINE_H_10  = 0.158
+
+
+def _wrap_text(text: str, chars_per_line: int) -> list:
     words = str(text).split()
-    lines = []
-    current = ""
+    lines, current = [], ""
     for word in words:
         candidate = f"{current} {word}".strip()
         if current and len(candidate) > chars_per_line:
@@ -92,48 +101,57 @@ def _wrap_text(text: str, chars_per_line: int) -> List[str]:
     return lines
 
 
-def _draw_wrapped_text(
-    ax,
-    x: float,
-    y_start: float,
-    text: str,
-    chars_per_line: int,
-    fontsize: float,
-    color: str,
-    line_gap: float = 0.12,
-    fontweight: Optional[str] = None,
-):
-    lines = _wrap_text(text, chars_per_line)
-    y = y_start
-    for line in lines:
-        ax.text(
-            x, y, line,
-            fontsize=fontsize,
-            color=color,
-            va="top",
-            fontweight=fontweight,
-            clip_on=True,
-        )
-        y -= line_gap
-    return y
+def _cpl(axes_width: float, x_pad: float, fontsize: float) -> int:
+    usable_in = _FIG_W_IN * axes_width * (1.0 - x_pad * 2)
+    return max(20, int(usable_in / (_CHAR_W_10 * fontsize / 10.0)))
 
 
-def _draw_paragraph_in_box(
-    ax,
+def _text_box(
+    fig,
+    left: float,
+    bottom: float,
+    width: float,
     text: str,
-    x: float = 0.03,
-    y_top: float = 0.78,
-    width_chars: int = 82,
+    title: Optional[str] = None,
     fontsize: float = 10.5,
-    color: str = REPORT_DARK,
-    line_gap: float = 0.16,
-):
-    lines = _wrap_text(text, width_chars)
-    y = y_top
+    title_fontsize: float = 11.0,
+    x_pad: float = 0.03,
+    pad_top_in: float = 0.12,
+    pad_bot_in: float = 0.12,
+    title_gap_in: float = 0.22,
+    facecolor: str = "white",
+    edgecolor: str = REPORT_BORDER,
+    title_color: str = REPORT_ACCENT,
+    text_color: str = REPORT_DARK,
+) -> float:
+    """Auto-sizing text box. Returns total height in figure-fraction units."""
+    chars       = _cpl(width, x_pad, fontsize)
+    lines       = _wrap_text(text, chars)
+    line_h_in   = _LINE_H_10 * fontsize / 10.0
+    title_h_in  = title_gap_in if title else 0.0
+    total_h_in  = pad_top_in + title_h_in + len(lines) * line_h_in + pad_bot_in
+    total_h_frac = total_h_in / _FIG_H_IN
+
+    ax = fig.add_axes([left, bottom, width, total_h_frac])
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+    ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=True,
+        facecolor=facecolor, edgecolor=edgecolor, linewidth=1.2))
+
+    pad_top_ax = pad_top_in  / total_h_in
+    title_h_ax = title_h_in  / total_h_in
+    line_h_ax  = line_h_in   / total_h_in
+
+    y = 1.0 - pad_top_ax
+    if title:
+        ax.text(x_pad, y, title, fontsize=title_fontsize, fontweight="bold",
+                color=title_color, va="top", clip_on=True)
+        y -= title_h_ax
     for line in lines:
-        ax.text(x, y, line, fontsize=fontsize, color=color, va="top", clip_on=True)
-        y -= line_gap
-    return y
+        ax.text(x_pad, y, line, fontsize=fontsize, color=text_color,
+                va="top", clip_on=True)
+        y -= line_h_ax
+
+    return total_h_frac
 
 
 def _chunk_list(items: List[Any], size: int) -> List[List[Any]]:
@@ -205,34 +223,24 @@ def _build_cover_page(
 ) -> int:
     fig = _new_page()
     fig.text(0.07, 0.88, "Random Forest Model Report", fontsize=24, fontweight="bold", color=REPORT_ACCENT)
-    fig.text(0.07, 0.84, "Structured training documentation", fontsize=13, color="#5f6b7a")
 
-    # --- Model info box ---
-    meta_ax = fig.add_axes([0.07, 0.57, 0.86, 0.23])
-    meta_ax.axis("off")
-    meta_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2))
-    meta_ax.add_patch(plt.Rectangle((0, 0.84), 1, 0.16, facecolor="#f4f9ff", edgecolor=REPORT_BORDER, linewidth=1.2))
-    meta_ax.text(0.03, 0.92, "Model Information", fontsize=12, fontweight="bold", color=REPORT_ACCENT, va="center")
-
-    meta_lines = [
-        ("Model Type",       "Random Forest Regressor"),
-        ("Model Name",       artifact_base),
-        ("Target Variable",  target),
-        ("Feature Count",    str(len(features))),
-        ("Training Samples", f"{n_samples:,}"),
-        ("Generated At",     datetime.now().strftime("%Y-%b-%d %I:%M:%S %p")),
-    ]
-
-    y = 0.76
-    for label, value in meta_lines:
-        meta_ax.text(0.03, y, label, fontsize=10.5, fontweight="bold", color=REPORT_DARK, va="center")
-        meta_ax.text(0.30, y, value, fontsize=10.5, color=REPORT_DARK, va="center")
-        y -= 0.11
+    # --- Definition box (first) ---
+    definition = (
+        "Random Forest is an ensemble learning method that builds a large number of decision trees "
+        "during training and outputs the average prediction of all individual trees for regression "
+        "tasks. Each tree is trained on a random subset of the data and a random subset of features, "
+        "which reduces overfitting and improves generalization. It captures non-linear relationships "
+        "and is robust to outliers and noisy data, making it well-suited for complex prediction tasks."
+    )
+    _text_box(fig, 0.07, 0.65, 0.86, definition,
+              title="What is Random Forest?",
+              fontsize=9.5, title_fontsize=11,
+              facecolor="#f0f7ff", pad_top_in=0.12, pad_bot_in=0.12, title_gap_in=0.22)
 
     # --- Hyperparameters box ---
-    hyp_ax = fig.add_axes([0.07, 0.34, 0.86, 0.20])
+    hyp_ax = fig.add_axes([0.07, 0.40, 0.86, 0.20])
     hyp_ax.axis("off")
-    hyp_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=True, facecolor="#f0f7ff", edgecolor=REPORT_BORDER, linewidth=1.2))
+    hyp_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=True, facecolor="#f4f9ff", edgecolor=REPORT_BORDER, linewidth=1.2))
     hyp_ax.text(0.03, 0.88, "Model Hyperparameters", fontsize=11, fontweight="bold", color=REPORT_ACCENT, va="top")
 
     hyp_items = [
@@ -252,29 +260,27 @@ def _build_cover_page(
         hyp_ax.text(col_x,        row_y, label, fontsize=9.5, fontweight="bold", color=REPORT_DARK, va="top")
         hyp_ax.text(col_x + 0.22, row_y, value, fontsize=9.5, color=REPORT_DARK, va="top")
 
-    # --- What is Random Forest? box ---
-    def_ax = fig.add_axes([0.07, 0.07, 0.86, 0.24])
-    def_ax.axis("off")
-    def_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=True, facecolor="#f0f7ff", edgecolor=REPORT_BORDER, linewidth=1.2))
-    def_ax.text(0.03, 0.92, "What is Random Forest?", fontsize=11, fontweight="bold", color=REPORT_ACCENT, va="top")
+    # --- Model info box (last) ---
+    meta_ax = fig.add_axes([0.07, 0.13, 0.86, 0.24])
+    meta_ax.axis("off")
+    meta_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2))
+    meta_ax.add_patch(plt.Rectangle((0, 0.84), 1, 0.16, facecolor="#f4f9ff", edgecolor=REPORT_BORDER, linewidth=1.2))
+    meta_ax.text(0.03, 0.92, "Model Information", fontsize=12, fontweight="bold", color=REPORT_ACCENT, va="center")
 
-    definition = (
-        "Random Forest is an ensemble learning method that builds a large number of decision trees "
-        "during training and outputs the average prediction of all individual trees for regression "
-        "tasks. Each tree is trained on a random subset of the data and a random subset of features, "
-        "which reduces overfitting and improves generalization. It captures non-linear relationships "
-        "and is robust to outliers and noisy data, making it well-suited for complex prediction tasks."
-    )
-    _draw_paragraph_in_box(
-        def_ax,
-        definition,
-        x=0.03,
-        y_top=0.73,
-        width_chars=72,
-        fontsize=9.5,
-        color=REPORT_DARK,
-        line_gap=0.13,
-    )
+    meta_lines = [
+        ("Model Type",       "Random Forest Regressor"),
+        ("Model Name",       artifact_base),
+        ("Target Variable",  target),
+        ("Feature Count",    str(len(features))),
+        ("Training Samples", f"{n_samples:,}"),
+        ("Generated At",     datetime.now().strftime("%Y-%b-%d %I:%M:%S %p")),
+    ]
+
+    y = 0.74
+    for label, value in meta_lines:
+        meta_ax.text(0.03, y, label, fontsize=10.5, fontweight="bold", color=REPORT_DARK, va="center")
+        meta_ax.text(0.30, y, value, fontsize=10.5, color=REPORT_DARK, va="center")
+        y -= 0.11
 
     _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
@@ -310,7 +316,7 @@ def _build_executive_summary_page(
     )
 
     # Left box — performance summary
-    left_ax = fig.add_axes([0.07, 0.52, 0.40, 0.32])
+    left_ax = fig.add_axes([0.07, 0.64, 0.40, 0.24])
     left_ax.axis("off")
     left_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2))
     left_ax.text(0.04, 0.93, "Performance Summary", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
@@ -326,7 +332,7 @@ def _build_executive_summary_page(
         y = sub_y - 0.04
 
     # Right box — top feature importances
-    right_ax = fig.add_axes([0.53, 0.52, 0.40, 0.32])
+    right_ax = fig.add_axes([0.53, 0.64, 0.40, 0.24])
     right_ax.axis("off")
     right_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2))
     right_ax.text(0.04, 0.93, "Top Feature Importances", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
@@ -338,18 +344,16 @@ def _build_executive_summary_page(
         y -= 0.13
 
     # Bottom box — reading guide
-    rec_ax = fig.add_axes([0.07, 0.19, 0.86, 0.23])
-    rec_ax.axis("off")
-    rec_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2))
-    rec_ax.text(0.02, 0.90, "Recommended Reading of this Report", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
-
     rec_text = (
         "Use the metrics page to evaluate overall fit, the feature importance page to review "
         "which predictors contributed most across all trees, and the diagnostics page to inspect "
         "prediction bias and residual behavior. Variable distribution pages provide context for "
         "predictor spread."
     )
-    _draw_wrapped_text(rec_ax, 0.02, 0.68, rec_text, chars_per_line=72, fontsize=10.5, color=REPORT_DARK, line_gap=0.14)
+    _text_box(fig, 0.07, 0.38, 0.86, rec_text,
+              title="Recommended Reading of this Report",
+              fontsize=10.5, title_fontsize=12,
+              x_pad=0.02, facecolor="white", pad_top_in=0.12, pad_bot_in=0.12, title_gap_in=0.24)
 
     _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
@@ -384,23 +388,16 @@ def _build_metrics_table_page(
     table.scale(1, 1.6)
     _style_table(table, header_fontsize=10, body_fontsize=9)
 
-    notes_ax = fig.add_axes([0.10, 0.29, 0.80, 0.20])
-    notes_ax.axis("off")
-    notes_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.0))
-    notes_ax.text(0.03, 0.86, "Interpretation Notes", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
-
     notes_text = (
         f"This Random Forest model achieved R² = {metrics['R²']:.4f}. RMSE and MAE should be "
         f"interpreted relative to the scale of the target variable. Because Random Forest averages "
         f"across many trees, it tends to reduce variance significantly — but the residual plots "
         f"should still be examined to confirm consistent behavior across the prediction range."
     )
-    _draw_paragraph_in_box(
-        notes_ax, notes_text,
-        x=0.03, y_top=0.62,
-        width_chars=68, fontsize=10.3,
-        color=REPORT_DARK, line_gap=0.15,
-    )
+    _text_box(fig, 0.10, 0.07, 0.80, notes_text,
+              title="Interpretation Notes",
+              fontsize=10.3, title_fontsize=12,
+              facecolor="white", pad_top_in=0.12, pad_bot_in=0.12, title_gap_in=0.24)
 
     _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
@@ -573,18 +570,15 @@ def _build_residual_distribution_page(
         else "Conclusion: residual mean is not significantly different from zero."
     )
 
-    info_ax = fig.add_axes([0.10, 0.16, 0.80, 0.22])
-    info_ax.axis("off")
-    info_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.0))
-    info_ax.text(0.03, 0.88, "Residual t-test", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
-    info_ax.text(0.03, 0.68, f"T-statistic: {t_stat:.4f}", fontsize=10.5, color=REPORT_DARK)
-    info_ax.text(0.03, 0.50, f"P-value: {p_val:.4f}", fontsize=10.5, color=REPORT_DARK)
-    _draw_paragraph_in_box(
-        info_ax, conclusion,
-        x=0.03, y_top=0.30,
-        width_chars=68, fontsize=10.5,
-        color=REPORT_DARK, line_gap=0.14,
+    ttest_text = (
+        f"T-statistic: {t_stat:.4f}     "
+        f"P-value: {p_val:.4f}     "
+        f"{conclusion}"
     )
+    _text_box(fig, 0.10, 0.07, 0.80, ttest_text,
+              title="Residual t-test",
+              fontsize=10.5, title_fontsize=12,
+              facecolor="white", pad_top_in=0.12, pad_bot_in=0.12, title_gap_in=0.24)
 
     _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
