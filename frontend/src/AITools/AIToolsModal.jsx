@@ -315,6 +315,27 @@ export default function AIToolsModal({
         "🔄 Auto-saving training results to Common Table Database...",
       );
       await autoSaveToCommonDB(newResults, selected);
+
+      // Notify parent window that training is complete
+      if (window.parent !== window) {
+        const trainedModels = selected.filter((m) => newResults[m]);
+        window.parent.postMessage(
+          {
+            type: "AI_TOOLS_TRAINING_COMPLETE",
+            status: trainedModels.length > 0 ? "success" : "failed",
+            models_trained: trainedModels,
+            metrics: Object.fromEntries(
+              trainedModels.map((m) => [m, newResults[m]?.metrics || null]),
+            ),
+            schema: userSchema,
+            table: selectedTable,
+            dependent_var: dependentVar,
+            timestamp: new Date().toISOString(),
+          },
+          "*",
+        );
+        console.log("📨 Sent AI_TOOLS_TRAINING_COMPLETE to parent");
+      }
     } catch (error) {
       console.error("Critical error during training sequence:", error);
       alert("An error occurred during the training process.");
