@@ -41,13 +41,13 @@ def _new_page(figsize=(8.27, 11.69)):
 
 
 def _add_page_header(fig, title: str, subtitle: Optional[str] = None):
-    fig.text(0.07, 0.965, title, fontsize=20, fontweight="bold", color=REPORT_ACCENT, va="top")
+    fig.text(0.07, 0.972, title, fontsize=20, fontweight="bold", color=REPORT_ACCENT, va="top")
     if subtitle:
-        fig.text(0.07, 0.938, subtitle, fontsize=10.5, color="#5f6b7a", va="top")
+        fig.text(0.07, 0.945, subtitle, fontsize=10.5, color="#5f6b7a", va="top")
     fig.lines.append(
         plt.Line2D(
             [0.07, 0.93],
-            [0.922, 0.922],
+            [0.928, 0.928],
             transform=fig.transFigure,
             color=REPORT_BORDER,
             linewidth=1.2,
@@ -59,14 +59,14 @@ def _add_footer(fig, artifact_base: str, page_label: str):
     fig.lines.append(
         plt.Line2D(
             [0.07, 0.93],
-            [0.05, 0.05],
+            [0.06, 0.06],
             transform=fig.transFigure,
             color=REPORT_BORDER,
             linewidth=0.8,
         )
     )
-    fig.text(0.07, 0.028, f"Model Report | {artifact_base}", fontsize=8.5, color="#6b7280")
-    fig.text(0.93, 0.028, page_label, fontsize=8.5, color="#6b7280", ha="right")
+    fig.text(0.07, 0.035, f"Model Report | {artifact_base}", fontsize=8.5, color="#6b7280")
+    fig.text(0.93, 0.035, page_label, fontsize=8.5, color="#6b7280", ha="right")
 
 
 def _save_png(fig, export_path: str, filename: str) -> str:
@@ -112,12 +112,12 @@ def _text_box(
     width: float,
     text: str,
     title: Optional[str] = None,
-    fontsize: float = 10.5,
+    fontsize: float = 10.3,
     title_fontsize: float = 11.0,
-    x_pad: float = 0.03,
-    pad_top_in: float = 0.12,
-    pad_bot_in: float = 0.12,
-    title_gap_in: float = 0.22,
+    x_pad: float = 0.04,
+    pad_top_in: float = 0.16,
+    pad_bot_in: float = 0.16,
+    title_gap_in: float = 0.26,
     facecolor: str = "white",
     edgecolor: str = REPORT_BORDER,
     title_color: str = REPORT_ACCENT,
@@ -318,28 +318,37 @@ def _build_executive_summary_page(
     )
 
     # Left box — performance
-    left_ax = fig.add_axes([0.07, 0.64, 0.40, 0.24])
+    BOX_LEFT_X   = 0.07
+    BOX_RIGHT_X  = 0.52
+    BOX_WIDTH    = 0.41
+    BOX_BOTTOM   = 0.68
+    BOX_HEIGHT   = 0.20
+    TITLE_Y      = 0.91
+    CONTENT_Y    = 0.80
+    CONT_STEP    = 0.095
+
+    left_ax = fig.add_axes([BOX_LEFT_X, BOX_BOTTOM, BOX_WIDTH, BOX_HEIGHT])
     left_ax.axis("off")
     left_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2))
-    left_ax.text(0.04, 0.93, "Performance Summary", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
+    left_ax.text(0.04, TITLE_Y, "Performance Summary", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
 
-    y = 0.80
+    y = CONTENT_Y
     for line in summary_lines:
         wrapped = _wrap_text(line, chars_per_line=42)
         left_ax.text(0.05, y, f"• {wrapped[0]}", fontsize=9.5, color=REPORT_DARK, va="top")
-        sub_y = y - 0.10
+        sub_y = y - CONT_STEP
         for extra in wrapped[1:]:
             left_ax.text(0.08, sub_y, extra, fontsize=9.5, color=REPORT_DARK, va="top")
-            sub_y -= 0.10
+            sub_y -= CONT_STEP
         y = sub_y - 0.04
 
     # Right box — top features
-    right_ax = fig.add_axes([0.53, 0.64, 0.40, 0.24])
+    right_ax = fig.add_axes([BOX_RIGHT_X, BOX_BOTTOM, BOX_WIDTH, BOX_HEIGHT])
     right_ax.axis("off")
     right_ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2))
-    right_ax.text(0.04, 0.93, "Top Feature Importances", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
+    right_ax.text(0.04, TITLE_Y, "Top Feature Importances", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
 
-    y = 0.80
+    y = CONTENT_Y
     for rank, (feat, val) in enumerate(sorted_pairs[:5], start=1):
         line = f"{rank}. {feat}  ({float(val):.4f})"
         right_ax.text(0.05, y, line, fontsize=9.5, color=REPORT_DARK, va="top")
@@ -351,7 +360,7 @@ def _build_executive_summary_page(
         "which predictors contributed most, and the diagnostics page to inspect prediction "
         "bias and residual behavior. Variable distribution pages provide context for predictor spread."
     )
-    _text_box(fig, 0.07, 0.38, 0.86, rec_text,
+    _text_box(fig, 0.07, 0.48, 0.86, rec_text,
               title="Recommended Reading of this Report",
               fontsize=10.5, title_fontsize=12,
               x_pad=0.02, facecolor="white", pad_top_in=0.12, pad_bot_in=0.12, title_gap_in=0.24)
@@ -372,7 +381,7 @@ def _build_metrics_table_page(
     fig = _new_page()
     _add_page_header(fig, "Model Performance Metrics", "Core evaluation results")
 
-    ax = fig.add_axes([0.10, 0.63, 0.80, 0.16])
+    ax = fig.add_axes([0.10, 0.74, 0.80, 0.14])
     ax.axis("off")
 
     table = ax.table(
@@ -394,10 +403,10 @@ def _build_metrics_table_page(
         f"relative to the scale of the target variable. Unlike linear models, XGBoost captures "
         f"non-linear interactions between features, so residual patterns may differ from classical regression."
     )
-    _text_box(fig, 0.10, 0.07, 0.80, notes_text,
+    _text_box(fig, 0.07, 0.60, 0.86, notes_text,
               title="Interpretation Notes",
               fontsize=10.3, title_fontsize=12,
-              facecolor="white", pad_top_in=0.12, pad_bot_in=0.12, title_gap_in=0.24)
+              x_pad=0.02, facecolor="white", pad_top_in=0.12, pad_bot_in=0.12, title_gap_in=0.24)
 
     _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
@@ -426,7 +435,7 @@ def _build_feature_importance_page(
     _add_page_header(fig, "Feature Importance", "XGBoost gain-based feature contribution scores")
 
     # Bar chart
-    chart_ax = fig.add_axes([0.18, 0.52, 0.72, 0.34])
+    chart_ax = fig.add_axes([0.15, 0.50, 0.76, 0.36])
     chart_ax.barh(feat_names, feat_vals, color=REPORT_ACCENT, edgecolor="#1f1f1f", linewidth=0.5)
     chart_ax.set_title("Feature Importance (Gain)", fontsize=12, fontweight="bold", color=REPORT_ACCENT, pad=10)
     chart_ax.set_xlabel("Importance Score", fontsize=9)
@@ -438,7 +447,7 @@ def _build_feature_importance_page(
     chart_ax.invert_yaxis()
 
     # Importance table
-    table_ax = fig.add_axes([0.10, 0.12, 0.80, 0.30])
+    table_ax = fig.add_axes([0.10, 0.16, 0.80, 0.28])
     table_ax.axis("off")
 
     row_chunks = _chunk_list(
@@ -501,7 +510,7 @@ def _build_diagnostics_page(
     fig = _new_page()
     _add_page_header(fig, "Prediction Diagnostics", "Observed fit and residual behavior")
 
-    ax1 = fig.add_axes([0.14, 0.54, 0.76, 0.32])
+    ax1 = fig.add_axes([0.14, 0.56, 0.76, 0.29])
     ax1.scatter(y_test, y_pred, alpha=0.65, color=REPORT_ACCENT, edgecolor="black", linewidth=0.4)
     minv = min(float(np.min(y_test)), float(np.min(y_pred)))
     maxv = max(float(np.max(y_test)), float(np.max(y_pred)))
@@ -513,7 +522,7 @@ def _build_diagnostics_page(
     ax1.legend(fontsize=8)
     ax1.grid(alpha=0.20)
 
-    ax2 = fig.add_axes([0.14, 0.13, 0.76, 0.28])
+    ax2 = fig.add_axes([0.14, 0.15, 0.76, 0.24])
     ax2.scatter(y_pred, residuals, alpha=0.65, color="#ef4444", edgecolor="black", linewidth=0.4)
     ax2.axhline(y=0, color="black", linestyle="--", linewidth=1.3, label="Zero Line")
     ax2.set_title("Residuals vs Predicted", fontsize=12, fontweight="bold", color="#dc2626", pad=8)
@@ -558,8 +567,21 @@ def _build_residual_distribution_page(
     fig = _new_page()
     _add_page_header(fig, "Residual Analysis", "Residual distribution and one-sample t-test")
 
-    ax = fig.add_axes([0.10, 0.52, 0.80, 0.32])
+    ax = fig.add_axes([0.12, 0.32, 0.76, 0.52])
     sns.histplot(residuals, kde=True, ax=ax, color=REPORT_ACCENT, edgecolor="black", bins=20)
+
+    # Linear y-axis ticks: 0, 250, 500, 750, 1k, 2k, 4k, 6k, 8k, 10k
+    custom_ticks = [0, 250, 500, 750, 1000, 2000, 4000, 6000, 8000, 10000]
+    data_max = ax.get_ylim()[1]
+    visible_ticks = [t for t in custom_ticks if t <= data_max * 1.10]
+    if len(visible_ticks) < 2:
+        visible_ticks = custom_ticks[:4]
+    ax.set_yticks(visible_ticks)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(
+        lambda x, _: '0' if x == 0 else (f'{int(x)}' if x < 1000 else f'{int(x/1000):.0f}k')
+    ))
+    ax.set_ylim(0, max(visible_ticks) * 1.10)
+
     ax.set_title("Residual Distribution", fontsize=13, fontweight="bold", color=REPORT_ACCENT, pad=12)
     ax.set_xlabel("Residual")
     ax.set_ylabel("Frequency")
@@ -578,7 +600,7 @@ def _build_residual_distribution_page(
         f"P-value: {p_val:.4f}     "
         f"{conclusion}"
     )
-    _text_box(fig, 0.10, 0.07, 0.80, ttest_text,
+    _text_box(fig, 0.10, 0.17, 0.80, ttest_text,
               title="Residual t-test",
               fontsize=10.5, title_fontsize=12,
               facecolor="white", pad_top_in=0.12, pad_bot_in=0.12, title_gap_in=0.24)
@@ -599,8 +621,8 @@ def _build_variable_distribution_pages(
 ) -> int:
     plots_per_page = 2
     axes_positions = [
-        [0.10, 0.54, 0.80, 0.28],
-        [0.10, 0.14, 0.80, 0.28],
+        [0.10, 0.57, 0.80, 0.24],
+        [0.10, 0.16, 0.80, 0.24],
     ]
 
     for start_idx in range(0, len(independent_vars), plots_per_page):
@@ -654,10 +676,10 @@ def _draw_doc_notes_box(fig, notes: List[str], bottom: float, chars_per_line: in
     Draw the Documentation Notes box with a height that auto-expands
     to fit all bullet lines — never clips, never overflows right edge.
     """
-    line_gap  = 0.022   # height per line in figure-fraction units
-    title_h   = 0.038   # space for the "Documentation Notes" title
-    pad_top   = 0.018
-    pad_bot   = 0.018
+    line_gap  = 0.024
+    title_h   = 0.042
+    pad_top   = 0.022
+    pad_bot   = 0.022
     indent    = "    "  # continuation-line indent
 
     # Pre-compute all display lines
@@ -715,32 +737,42 @@ def _build_final_summary_page(
     top_items = sorted_pairs[:3]
 
     # Left — model summary
-    box1 = fig.add_axes([0.07, 0.58, 0.40, 0.26])
+    BOX_LEFT_X  = 0.07
+    BOX_RIGHT_X = 0.52
+    BOX_WIDTH   = 0.41
+    BOX_BOTTOM  = 0.70
+    BOX_HEIGHT  = 0.20
+
+    box1 = fig.add_axes([BOX_LEFT_X, BOX_BOTTOM, BOX_WIDTH, BOX_HEIGHT])
     box1.axis("off")
-    box1.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_ACCENT, linewidth=1.3))
-    box1.text(0.04, 0.88, "Model Summary", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
-    summary_text = (
-        f"Target variable: {target}\n"
-        f"Training samples: {n_samples:,}\n"
-        f"R²: {metrics['R²']:.4f}\n"
-        f"RMSE: {metrics['RMSE']:.2f}\n"
-        f"MAE: {metrics['MAE']:.2f}"
-    )
-    box1.text(0.04, 0.70, summary_text, fontsize=10.5, color=REPORT_DARK, va="top")
+    box1.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2))
+    box1.text(0.04, 0.91, "Model Summary", fontsize=12, fontweight="bold", color=REPORT_ACCENT, va="top")
+
+    summary_lines_list = [
+        f"Target variable: {target}",
+        f"Training samples: {n_samples:,}",
+        f"R²: {metrics['R²']:.4f}",
+        f"RMSE: {metrics['RMSE']:.2f}",
+        f"MAE: {metrics['MAE']:.2f}",
+    ]
+    sy = 0.76
+    for sline in summary_lines_list:
+        box1.text(0.04, sy, sline, fontsize=10.5, color=REPORT_DARK, va="top")
+        sy -= 0.13
 
     # Right — top predictors
-    box2 = fig.add_axes([0.53, 0.58, 0.40, 0.26])
+    box2 = fig.add_axes([BOX_RIGHT_X, BOX_BOTTOM, BOX_WIDTH, BOX_HEIGHT])
     box2.axis("off")
     box2.add_patch(plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor=REPORT_BORDER, linewidth=1.2))
-    box2.text(0.04, 0.88, "Top Predictors", fontsize=12, fontweight="bold", color=REPORT_ACCENT)
+    box2.text(0.04, 0.91, "Top Predictors", fontsize=12, fontweight="bold", color=REPORT_ACCENT, va="top")
 
-    y = 0.72
+    y = 0.76
     if top_items:
         for idx, (feat, val) in enumerate(top_items, start=1):
-            box2.text(0.05, y, f"{idx}. {feat}  ({float(val):.4f})", fontsize=10.5, color=REPORT_DARK)
+            box2.text(0.05, y, f"{idx}. {feat}  ({float(val):.4f})", fontsize=10.5, color=REPORT_DARK, va="top")
             y -= 0.18
     else:
-        box2.text(0.05, 0.72, "No ranked predictors available.", fontsize=10.5, color=REPORT_DARK)
+        box2.text(0.05, y, "No ranked predictors available.", fontsize=10.5, color=REPORT_DARK, va="top")
 
     # Bottom — documentation notes
 
@@ -752,7 +784,7 @@ def _build_final_summary_page(
         "Use this report together with domain validation before deploying predictions.",
     ]
 
-    _draw_doc_notes_box(fig, notes, bottom=0.07)
+    _draw_doc_notes_box(fig, notes, bottom=0.33)
 
     _add_footer(fig, artifact_base, f"Page {page_num}")
     pp.savefig(fig, facecolor="white")
