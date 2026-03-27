@@ -485,7 +485,9 @@ async def auto_save_training_results(
             print("📊 Loading shapefile for predictions...")
             gdf = gpd.read_file(shapefile_path)
             if not gdf.empty:
-                predictions_table = f"training_predictions_{model_type}"
+                # Use model_name as the table name (truncated to 63 chars for PostgreSQL)
+                safe_table_base = (model_name or f"training_predictions_{model_type}")[:63]
+                predictions_table = safe_table_base
                 gdf.to_postgis(
                     name=predictions_table,
                     con=db.connection(),

@@ -232,7 +232,9 @@ async def list_models(
             models.append({
                 "id": model_id,
                 "name": name,
+                "model_name": name,
                 "type": mtype,
+                "model_type": mtype,
                 "dependent_var": dep_var,
                 "features": features,
                 "created_at": created.isoformat() if created else None,

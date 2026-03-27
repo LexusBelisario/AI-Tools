@@ -22,9 +22,12 @@ router = APIRouter()
 EXPORT_DIR = os.path.join(os.getcwd(), "exported_models")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
-def build_artifact_base_name(model_used: str) -> str:
+def build_artifact_base_name(model_used: str, table_name: str = "") -> str:
     now = datetime.now()
-    return f"{model_used}_{now.strftime('%Y-%b-%d_%I-%M-%S%p')}"
+    base = f"{model_used}_{now.strftime('%Y-%b-%d_%I-%M-%S%p')}"
+    if table_name and table_name.strip():
+        base = f"{base}_{table_name.strip()}"
+    return base
 
 
 def wrap_plot_urls(plots: Dict[str, Optional[str]], prefix: str) -> Dict[str, Optional[str]]:
@@ -310,7 +313,7 @@ async def train_linear_regression(
         preds = model.predict(X_test_scaled)
         residuals = y_test - preds
 
-        artifact_base = build_artifact_base_name("LR")
+        artifact_base = build_artifact_base_name("LR", table_name or "")
         export_path = os.path.join(EXPORT_DIR, artifact_base)
         os.makedirs(export_path, exist_ok=True)
 

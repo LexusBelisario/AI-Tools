@@ -40,9 +40,12 @@ router = APIRouter()
 EXPORT_DIR = os.path.join(os.getcwd(), "exported_models")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
-def build_artifact_base_name(model_used: str) -> str:
+def build_artifact_base_name(model_used: str, table_name: str = "") -> str:
     now = datetime.now()
-    return f"{model_used}_{now.strftime('%Y-%b-%d_%I-%M-%S%p')}"
+    base = f"{model_used}_{now.strftime('%Y-%b-%d_%I-%M-%S%p')}"
+    if table_name and table_name.strip():
+        base = f"{base}_{table_name.strip()}"
+    return base
 
 def _wrap_download_urls(paths: Dict[str, Optional[str]], base_url: str) -> Dict[str, Optional[str]]:
     # same pattern used sa ibang trainers: /download?file=...
@@ -201,7 +204,7 @@ async def train_rf_model(
         df_valid = df_valid[indep + [target]].copy()
 
         # 11) EXPORT ARTIFACTS (keep everything)
-        artifact_base = build_artifact_base_name("RF")
+        artifact_base = build_artifact_base_name("RF", table_name or "")
         export_path = os.path.join(EXPORT_DIR, artifact_base)
         os.makedirs(export_path, exist_ok=True)
         print(f"📦 Creating export folder: {artifact_base}")
