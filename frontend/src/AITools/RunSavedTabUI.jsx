@@ -321,10 +321,7 @@ export default function RunSavedTabUI({
                   <option value="">-- Select a model --</option>
                   {availableModels.map((model) => (
                     <option key={model.id} value={model.id}>
-                      {model.model_name} ({model.model_type?.toUpperCase()})
-                      {model.created_at
-                        ? ` — ${new Date(model.created_at).toLocaleDateString()}`
-                        : ""}
+                      {model.display_name || model.model_name}
                     </option>
                   ))}
                 </select>
@@ -343,10 +340,7 @@ export default function RunSavedTabUI({
                 style={{ padding: "10px" }}
               />
               {modelFile && (
-                <div
-                  className="blgf-ai-filelist"
-                  style={{ marginTop: "10px" }}
-                >
+                <div className="blgf-ai-filelist" style={{ marginTop: "10px" }}>
                   <span>{modelFile.name}</span>
                 </div>
               )}
@@ -363,9 +357,7 @@ export default function RunSavedTabUI({
               onClick={() => setInputSource("db")}
             >
               <div className="blgf-ai-model-card-header">
-                <span className="blgf-ai-model-name">
-                  Common Database
-                </span>
+                <span className="blgf-ai-model-name">Common Database</span>
                 <div className="blgf-ai-checkbox-indicator">
                   {inputSource === "db" && "✓"}
                 </div>

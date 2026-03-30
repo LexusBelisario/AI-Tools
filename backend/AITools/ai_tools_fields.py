@@ -110,7 +110,7 @@ async def ai_list_training_tables(schema: str = Form(...)):
                 FROM information_schema.tables
                 WHERE table_schema = :schema
                   AND table_type = 'BASE TABLE'
-                  AND LOWER(table_name) LIKE '%training_table%'
+                  AND LOWER(table_name) LIKE 'training_table%'
                 ORDER BY table_name
                 """
             )
