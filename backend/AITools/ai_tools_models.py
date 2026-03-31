@@ -2,7 +2,9 @@ from fastapi import APIRouter, Form, Header, HTTPException
 from sqlalchemy import text
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+PHT = timezone(timedelta(hours=8))  # Philippine Standard Time (UTC+8)
 import re
 import io
 import joblib
@@ -127,7 +129,7 @@ async def save_trained_model_local(
         meta = {
             "saved_from": "auto_after_training",
             "source_file": os.path.basename(safe_path),
-            "saved_at": datetime.utcnow().isoformat(),
+            "saved_at": datetime.now(PHT).isoformat(),
         }
 
         db = get_request_session()
@@ -361,7 +363,7 @@ async def save_model_to_gis_db(
         meta = {
             "saved_from": "manual_save_modal",
             "source_file": os.path.basename(safe_path),
-            "saved_at": datetime.utcnow().isoformat(),
+            "saved_at": datetime.now(PHT).isoformat(),
         }
 
         db = get_request_session()

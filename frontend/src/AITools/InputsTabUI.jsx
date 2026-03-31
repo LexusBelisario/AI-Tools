@@ -215,7 +215,7 @@ export default function InputsTabUI({
       <div className="blgf-ai-data-grid">
         <div className="blgf-ai-col-left">
           <div className="blgf-ai-block">
-            <div className="blgf-ai-label">Training Table</div>
+            <div className="blgf-ai-label">Select Training Table</div>
             <select
               value={selectedTable}
               onChange={(e) => setSelectedTable(e.target.value)}

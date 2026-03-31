@@ -5,7 +5,9 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 import tempfile, os, joblib, json, zipfile
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+PHT = timezone(timedelta(hours=8))  # Philippine Standard Time (UTC+8)
 from scipy import stats
 from AITools.lr_print_handler import export_full_report_and_artifacts
 from sqlalchemy import text
@@ -23,7 +25,7 @@ EXPORT_DIR = os.path.join(os.getcwd(), "exported_models")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
 def build_artifact_base_name(model_used: str, table_name: str = "") -> str:
-    now = datetime.now()
+    now = datetime.now(PHT)
     base = f"{model_used}_{now.strftime('%Y-%b-%d_%I-%M-%S%p')}"
     if table_name and table_name.strip():
         base = f"{base}_{table_name.strip()}"
@@ -325,7 +327,7 @@ async def train_linear_regression(
                 "features": [v.lower() for v in indep],
                 "dependent_var": target.lower(),
                 "model_type": "lr",
-                "trained_at": datetime.now().isoformat(),
+                "trained_at": datetime.now(PHT).isoformat(),
             },
             model_path,
         )

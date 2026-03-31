@@ -9,7 +9,9 @@ import tempfile
 import os
 import json
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+PHT = timezone(timedelta(hours=8))  # Philippine Standard Time (UTC+8)
 from AITools.rf_print_handler import export_rf_report_and_artifacts
 
 from sklearn.ensemble import RandomForestRegressor
@@ -41,7 +43,7 @@ EXPORT_DIR = os.path.join(os.getcwd(), "exported_models")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
 def build_artifact_base_name(model_used: str, table_name: str = "") -> str:
-    now = datetime.now()
+    now = datetime.now(PHT)
     base = f"{model_used}_{now.strftime('%Y-%b-%d_%I-%M-%S%p')}"
     if table_name and table_name.strip():
         base = f"{base}_{table_name.strip()}"
@@ -235,7 +237,7 @@ async def train_rf_model(
                 "features": indep,
                 "target": target,
                 "model_type": "rf",
-                "trained_at": datetime.now().isoformat(),
+                "trained_at": datetime.now(PHT).isoformat(),
             },
             model_path,
             compress=3,

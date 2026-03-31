@@ -11,7 +11,9 @@ from xgboost import XGBRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+PHT = timezone(timedelta(hours=8))  # Philippine Standard Time (UTC+8)
 from sqlalchemy import text
 from db import get_user_database_session
 from AITools.ai_utils import (
@@ -34,7 +36,7 @@ EXPORT_DIR = os.path.join(os.getcwd(), "exported_models")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
 def build_artifact_base_name(model_used: str, table_name: str = "") -> str:
-    now = datetime.now()
+    now = datetime.now(PHT)
     base = f"{model_used}_{now.strftime('%Y-%b-%d_%I-%M-%S%p')}"
     if table_name and table_name.strip():
         base = f"{base}_{table_name.strip()}"
@@ -204,7 +206,7 @@ async def train_xgb_model(
                     "features": indep,
                     "target": target,
                     "model_type": "xgb",
-                    "trained_at": datetime.now().isoformat(),
+                    "trained_at": datetime.now(PHT).isoformat(),
                 },
                 f,
             )
