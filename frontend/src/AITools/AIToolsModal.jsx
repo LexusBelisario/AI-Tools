@@ -276,6 +276,7 @@ export default function AIToolsModal({
       fdBase.append("excluded_indices", JSON.stringify(excludedIndices));
 
       const newResults = { lr: null, rf: null, xgb: null };
+      const trainErrors = {};
 
       const calls = selected.map(async (m) => {
         const fd = new FormData();
@@ -294,10 +295,22 @@ export default function AIToolsModal({
             body: fd,
           });
 
-          if (!res.ok) throw new Error(`Model ${m} failed`);
+          if (!res.ok) {
+            const errBody = await res.text().catch(() => "");
+            let detail = `HTTP ${res.status}`;
+            try {
+              const parsed = JSON.parse(errBody);
+              detail = parsed.error || parsed.detail || detail;
+            } catch {
+              if (errBody) detail = errBody;
+            }
+            trainErrors[m] = detail;
+            throw new Error(detail);
+          }
 
           newResults[m] = await res.json();
         } catch (err) {
+          if (!trainErrors[m]) trainErrors[m] = err.message;
           console.error(`Error training ${m}:`, err);
         }
       });
@@ -319,11 +332,14 @@ export default function AIToolsModal({
       // Notify parent window that training is complete
       if (window.parent !== window) {
         const trainedModels = selected.filter((m) => newResults[m]);
+        const failedModels = selected.filter((m) => !newResults[m]);
         window.parent.postMessage(
           {
             type: "AI_TOOLS_TRAINING_COMPLETE",
             status: trainedModels.length > 0 ? "success" : "failed",
             models_trained: trainedModels,
+            failed_models: failedModels,
+            errors: Object.keys(trainErrors).length > 0 ? trainErrors : null,
             metrics: Object.fromEntries(
               trainedModels.map((m) => [m, newResults[m]?.metrics || null]),
             ),
@@ -339,6 +355,25 @@ export default function AIToolsModal({
     } catch (error) {
       console.error("Critical error during training sequence:", error);
       alert("An error occurred during the training process.");
+
+      // Notify parent even on critical failure
+      if (window.parent !== window) {
+        window.parent.postMessage(
+          {
+            type: "AI_TOOLS_TRAINING_COMPLETE",
+            status: "error",
+            models_trained: [],
+            failed_models: selected,
+            errors: { _critical: error.message },
+            metrics: null,
+            schema: userSchema,
+            table: selectedTable,
+            dependent_var: dependentVar,
+            timestamp: new Date().toISOString(),
+          },
+          "*",
+        );
+      }
     } finally {
       setTraining(false);
     }
