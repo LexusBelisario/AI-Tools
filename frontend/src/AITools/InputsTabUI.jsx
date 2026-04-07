@@ -44,7 +44,7 @@ function AttributePreviewTable({
     return (
       <div className="blgf-ai-table-wrap empty">
         <div style={{ padding: "40px", textAlign: "center", color: "#94a3b8" }}>
-          👆 Select dependent and independent variables above to preview data
+          Select dependent and independent variables above to preview data
         </div>
       </div>
     );

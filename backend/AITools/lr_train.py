@@ -320,34 +320,44 @@ async def train_linear_regression(
         os.makedirs(export_path, exist_ok=True)
 
         model_path = os.path.join(export_path, f"{artifact_base}.pkl")
-        joblib.dump(
-            {
-                "model": model,
-                "scaler": scaler,
-                "features": [v.lower() for v in indep],
-                "dependent_var": target.lower(),
-                "model_type": "lr",
-                "trained_at": datetime.now(PHT).isoformat(),
-            },
-            model_path,
-        )
-        print(f"Saved model: {os.path.basename(model_path)}")
+        try:
+            joblib.dump(
+                {
+                    "model": model,
+                    "scaler": scaler,
+                    "features": [v.lower() for v in indep],
+                    "dependent_var": target.lower(),
+                    "model_type": "lr",
+                    "trained_at": datetime.now(PHT).isoformat(),
+                },
+                model_path,
+            )
+            print(f"Saved model: {os.path.basename(model_path)}")
+        except Exception as e:
+            print(f"❌ Failed to save model: {e}")
+            raise
 
-        metrics, png_paths, t_tests, pdf_path = export_full_report_and_artifacts(
-            export_path,
-            model,
-            scaler,
-            indep,
-            target,
-            X_train_scaled,
-            y_train,
-            X_test_scaled,
-            y_test,
-            preds,
-            residuals,
-            X_train_unscaled=X_train,
-            artifact_base=artifact_base,
-        )
+        try:
+            metrics, png_paths, t_tests, pdf_path = export_full_report_and_artifacts(
+                export_path,
+                model,
+                scaler,
+                indep,
+                target,
+                X_train_scaled,
+                y_train,
+                X_test_scaled,
+                y_test,
+                preds,
+                residuals,
+                X_train_unscaled=X_train,
+                artifact_base=artifact_base,
+            )
+        except Exception as e:
+            import traceback
+            print(f"❌ Report generation failed: {e}")
+            print(traceback.format_exc())
+            raise
 
         preds_valid = model.predict(scaler.transform(df_valid[indep]))
         df_valid = df_valid.copy()
