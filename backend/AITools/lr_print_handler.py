@@ -873,7 +873,9 @@ def export_full_report_and_artifacts(
     k   = len(independent_vars)
     dof = n - k - 1
 
-    residual_std_error = np.sqrt(np.sum(residuals ** 2) / dof)
+    if dof <= 0:
+        print(f"⚠️ Warning: dof={dof} (n={n}, k={k}). Dataset too small for reliable t-statistics.")
+    residual_std_error = np.sqrt(np.sum(residuals ** 2) / dof) if dof > 0 else float("nan")
 
     try:
         XtX_inv   = np.linalg.inv(X_train_scaled.T @ X_train_scaled)

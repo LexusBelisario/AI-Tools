@@ -178,39 +178,49 @@ async def train_xgb_model(
         os.makedirs(export_path, exist_ok=True)
         print(f"Creating export: {artifact_base}")
 
-        metrics, png_paths, pdf_path = export_xgb_report_and_artifacts(
-            export_path=export_path,
-            model=model,
-            scaler=scaler,
-            feature_names=indep,
-            target=target,
-            X_train=X_train_scaled,
-            y_train=y_train,
-            X_test=X_test_scaled,
-            y_test=y_test,
-            y_pred=y_pred,
-            df_valid=df_valid,
-            scaler_choice=scaler_choice,
-            artifact_base=artifact_base,
-        )
+        try:
+            metrics, png_paths, pdf_path = export_xgb_report_and_artifacts(
+                export_path=export_path,
+                model=model,
+                scaler=scaler,
+                feature_names=indep,
+                target=target,
+                X_train=X_train_scaled,
+                y_train=y_train,
+                X_test=X_test_scaled,
+                y_test=y_test,
+                y_pred=y_pred,
+                df_valid=df_valid,
+                scaler_choice=scaler_choice,
+                artifact_base=artifact_base,
+            )
+        except Exception as e:
+            import traceback
+            print(f"❌ XGB report generation failed: {e}")
+            print(traceback.format_exc())
+            raise
 
         plots = png_paths
 
         # Save model
         model_path = os.path.join(export_path, f"{artifact_base}.pkl")
-        with open(model_path, "wb") as f:
-            pickle.dump(
-                {
-                    "model": model,
-                    "scaler": scaler,
-                    "features": indep,
-                    "target": target,
-                    "model_type": "xgb",
-                    "trained_at": datetime.now(PHT).isoformat(),
-                },
-                f,
-            )
-        print(f"Saved model: {os.path.basename(model_path)}")
+        try:
+            with open(model_path, "wb") as f:
+                pickle.dump(
+                    {
+                        "model": model,
+                        "scaler": scaler,
+                        "features": indep,
+                        "target": target,
+                        "model_type": "xgb",
+                        "trained_at": datetime.now(PHT).isoformat(),
+                    },
+                    f,
+                )
+            print(f"Saved model: {os.path.basename(model_path)}")
+        except Exception as e:
+            print(f"❌ Failed to save XGB model: {e}")
+            raise
 
         # Export CSV
         preds_valid = model.predict(
