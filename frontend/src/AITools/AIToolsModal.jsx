@@ -417,6 +417,8 @@ export default function AIToolsModal({
         );
         formData.append("features_json", JSON.stringify(result.features || []));
         formData.append("metrics_json", JSON.stringify(result.metrics || {}));
+        formData.append("importance_json", JSON.stringify(result.importance || []));
+        formData.append("t_tests_json", JSON.stringify(result.t_test || null));
 
         const response = await authFetch(
           `${API}/common/auto-save-training-results`,

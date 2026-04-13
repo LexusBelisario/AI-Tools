@@ -99,6 +99,16 @@ def _ensure_ai_trained_models_table(db, schema: str):
             ADD COLUMN IF NOT EXISTS metrics JSONB
     '''))
 
+    db.execute(text(f'''
+        ALTER TABLE "{schema}"."ai_trained_models"
+            ADD COLUMN IF NOT EXISTS importance JSONB
+    '''))
+
+    db.execute(text(f'''
+        ALTER TABLE "{schema}"."ai_trained_models"
+            ADD COLUMN IF NOT EXISTS t_tests JSONB
+    '''))
+
     db.commit()
 
 
@@ -388,6 +398,8 @@ async def auto_save_training_results(
     dependent_var: str = Form(""),
     features_json: str = Form("[]"),
     metrics_json: str = Form("{}"),
+    importance_json: str = Form("[]"),
+    t_tests_json: str = Form("null"),
     authorization: str = Header(default=""),
     x_target_schema: str = Header(default="", alias="X-Target-Schema"),
     x_target_db: str = Header(default="", alias="X-Target-DB"),
@@ -445,6 +457,16 @@ async def auto_save_training_results(
             except Exception:
                 metrics = None
 
+            try:
+                importance = json.loads(importance_json) if importance_json else None
+            except Exception:
+                importance = None
+
+            try:
+                t_tests = json.loads(t_tests_json) if t_tests_json and t_tests_json != "null" else None
+            except Exception:
+                t_tests = None
+
             meta = {
                 "saved_from": "auto_save_after_training",
                 "source_file": os.path.basename(model_path),
@@ -456,10 +478,12 @@ async def auto_save_training_results(
             row = db.execute(
                 text(f'''
                     INSERT INTO "{schema}"."ai_trained_models"
-                        (model_name, model_type, dependent_var, features, metrics, model_blob, meta)
+                        (model_name, model_type, dependent_var, features, metrics, importance, t_tests, model_blob, meta)
                     VALUES
                         (:model_name, :model_type, :dependent_var,
-                         CAST(:features AS JSONB), CAST(:metrics AS JSONB), :model_blob, CAST(:meta AS JSONB))
+                         CAST(:features AS JSONB), CAST(:metrics AS JSONB),
+                         CAST(:importance AS JSONB), CAST(:t_tests AS JSONB),
+                         :model_blob, CAST(:meta AS JSONB))
                     RETURNING id
                 '''),
                 {
@@ -468,6 +492,8 @@ async def auto_save_training_results(
                     "dependent_var": dependent_var or None,
                     "features": json.dumps(features) if features is not None else None,
                     "metrics": json.dumps(metrics) if metrics is not None else None,
+                    "importance": json.dumps(importance) if importance is not None else None,
+                    "t_tests": json.dumps(t_tests) if t_tests is not None else None,
                     "model_blob": model_blob,
                     "meta": json.dumps(meta),
                 },
@@ -526,6 +552,77 @@ async def auto_save_training_results(
         print("❌ AUTO-SAVE ERROR:")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Auto-save failed: {str(e)}")
+
+    finally:
+        if db is not None:
+            db.close()
+        clear_request_context()
+
+@router.get("/model-results/{model_name}")
+async def get_model_results(
+    model_name: str,
+    authorization: str = Header(default=""),
+    x_target_schema: str = Header(default="", alias="X-Target-Schema"),
+    x_target_db: str = Header(default="", alias="X-Target-DB"),
+):
+    from common_db_runtime import (
+        resolve_common_context_from_token,
+        set_request_context,
+        get_request_session,
+        clear_request_context,
+    )
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing authorization")
+
+    token = authorization.split(" ", 1)[1].strip()
+    db = None
+
+    try:
+        ctx = resolve_common_context_from_token(
+            token,
+            db_override=(x_target_db or None),
+            schema_override=(x_target_schema or None),
+        )
+
+        set_request_context(ctx)
+        db = get_request_session()
+        schema = _validate_ident(ctx["schema"], "schema")
+
+        row = db.execute(
+            text(f'''
+                SELECT
+                    id, model_name, model_type, model_version, created_at,
+                    dependent_var, features, metrics, importance, t_tests, meta
+                FROM "{schema}"."ai_trained_models"
+                WHERE model_name = :model_name
+                ORDER BY created_at DESC
+                LIMIT 1
+            '''),
+            {"model_name": model_name},
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
+
+        return {
+            "id": row[0],
+            "model_name": row[1],
+            "model_type": row[2],
+            "model_version": row[3],
+            "created_at": row[4].isoformat() if row[4] else None,
+            "dependent_var": row[5],
+            "features": row[6],
+            "metrics": row[7],
+            "importance": row[8],
+            "t_tests": row[9],
+            "meta": row[10],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve model: {str(e)}")
 
     finally:
         if db is not None:
