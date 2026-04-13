@@ -485,9 +485,8 @@ async def auto_save_training_results(
             print("📊 Loading shapefile for predictions...")
             gdf = gpd.read_file(shapefile_path)
             if not gdf.empty:
-                # Use model_name as the table name (truncated to 63 chars for PostgreSQL)
-                safe_table_base = (model_name or f"training_predictions_{model_type}")[:63]
-                predictions_table = safe_table_base
+                import hashlib
+                predictions_table = model_name or f"training_predictions_{model_type}"
                 gdf.to_postgis(
                     name=predictions_table,
                     con=db.connection(),
@@ -495,6 +494,16 @@ async def auto_save_training_results(
                     if_exists="replace",
                     index=False,
                 )
+                # Manually create spatial index with a short hash-based name
+                # to avoid PostgreSQL's 63-char identifier limit on auto-generated index names
+                geom_col = gdf.geometry.name
+                idx_hash = hashlib.md5(predictions_table.encode()).hexdigest()[:8]
+                idx_name = f"idx_{idx_hash}_geom"
+                db.execute(text(f'''
+                    CREATE INDEX IF NOT EXISTS "{idx_name}"
+                    ON "{schema}"."{predictions_table}"
+                    USING gist ("{geom_col}")
+                '''))
                 db.commit()
                 predictions_saved = True
                 prediction_count = len(gdf)
