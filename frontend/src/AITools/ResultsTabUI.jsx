@@ -17,6 +17,7 @@ import {
 
 export default function ResultsTabUI({
   results,
+  trainErrors = {},
   activeModelTab,
   setActiveModelTab,
   onShowMap,
@@ -29,6 +30,9 @@ export default function ResultsTabUI({
   const hasLR = !!results.lr;
   const hasRF = !!results.rf;
   const hasXGB = !!results.xgb;
+  const hasLRError = !hasLR && !!trainErrors.lr;
+  const hasRFError = !hasRF && !!trainErrors.rf;
+  const hasXGBError = !hasXGB && !!trainErrors.xgb;
 
   return (
     <div className="blgf-ai-content">
@@ -43,6 +47,15 @@ export default function ResultsTabUI({
             Linear Regression
           </div>
         )}
+        {hasLRError && (
+          <div
+            className={`blgf-ai-modeltab ${activeModelTab === "lr_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("lr_err")}
+            style={{ color: "#f87171" }}
+          >
+            Linear Regression ✕
+          </div>
+        )}
 
         {hasRF && (
           <div
@@ -52,6 +65,15 @@ export default function ResultsTabUI({
             onClick={() => setActiveModelTab("rf")}
           >
             Random Forest
+          </div>
+        )}
+        {hasRFError && (
+          <div
+            className={`blgf-ai-modeltab ${activeModelTab === "rf_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("rf_err")}
+            style={{ color: "#f87171" }}
+          >
+            Random Forest ✕
           </div>
         )}
 
@@ -65,6 +87,15 @@ export default function ResultsTabUI({
             XGBoost
           </div>
         )}
+        {hasXGBError && (
+          <div
+            className={`blgf-ai-modeltab ${activeModelTab === "xgb_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("xgb_err")}
+            style={{ color: "#f87171" }}
+          >
+            XGBoost ✕
+          </div>
+        )}
       </div>
 
       {!activeModelTab && (
@@ -73,7 +104,26 @@ export default function ResultsTabUI({
         </div>
       )}
 
-      {activeModelTab && (
+      {/* Error panel for failed models */}
+      {activeModelTab && activeModelTab.endsWith("_err") && (
+        <div className="blgf-ai-block" style={{ marginTop: 16 }}>
+          <div style={{
+            background: "#1e1010",
+            border: "1px solid #f87171",
+            borderRadius: 8,
+            padding: "16px",
+          }}>
+            <div style={{ color: "#f87171", fontWeight: 600, marginBottom: 8 }}>
+              ⚠️ Training Failed
+            </div>
+            <div style={{ color: "#fca5a5", fontSize: 13, fontFamily: "monospace", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              {trainErrors[activeModelTab.replace("_err", "")]}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModelTab && !activeModelTab.endsWith("_err") && (
         <ModelSection
           modelType={activeModelTab}
           modelResult={results[activeModelTab]}

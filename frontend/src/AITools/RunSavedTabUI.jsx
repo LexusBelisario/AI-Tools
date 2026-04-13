@@ -8,6 +8,9 @@ export default function RunSavedTabUI({
   setLoadingFieldName,
   token = "",
   userDb = null,
+  preSelectedModel = null,
+  openRunSaved = false,
+  onPreSelectedConsumed = null,
 }) {
   // === MODEL INPUT STATE ===
   const [modelSource, setModelSource] = useState("db"); // "upload" or "db"
@@ -156,6 +159,34 @@ export default function RunSavedTabUI({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userSchema, inputSource, token]);
+
+  // Auto-select model from parent postMessage
+  useEffect(() => {
+    if (preSelectedModel && availableModels.length > 0) {
+      const match = availableModels.find(
+        (m) => m.model_name === preSelectedModel
+      );
+      if (match) {
+        setModelSource("db");
+        setSelectedDbModel(match.id);
+        console.log("✅ Auto-selected model:", preSelectedModel, "id:", match.id);
+        if (onPreSelectedConsumed) onPreSelectedConsumed();
+      }
+    }
+  }, [preSelectedModel, availableModels]);
+
+  // Auto-select LandParcel table when opened via payload
+  useEffect(() => {
+    if (openRunSaved && availableTables.length > 0) {
+      const match = availableTables.find((t) =>
+        t.toLowerCase().includes("landparcel")
+      );
+      if (match) {
+        setTableName(match);
+        console.log("✅ Auto-selected table:", match);
+      }
+    }
+  }, [openRunSaved, availableTables]);
 
   const handleModelFileChange = (e) => {
     const file = e.target.files[0];
