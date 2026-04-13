@@ -13,6 +13,9 @@ export default function AIToolsModal({
   schema: externalSchema = null,
   token = "",
   shouldDisconnect = false,
+  preSelectedRunModel = null,
+  openRunSaved = false,
+  onPreSelectedRunModelConsumed = null,
 }) {
   const [availableTables, setAvailableTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState("");
@@ -42,6 +45,7 @@ export default function AIToolsModal({
     xgb: null,
   });
 
+  const [trainErrors, setTrainErrors] = useState({});
   const [activeModelTab, setActiveModelTab] = useState(null);
   const [training, setTraining] = useState(false);
   const [loadingMap, setLoadingMap] = useState(false);
@@ -318,10 +322,15 @@ export default function AIToolsModal({
       await Promise.all(calls);
 
       setResults(newResults);
+      setTrainErrors(trainErrors);
 
       const first = selected.find((m) => newResults[m]);
       if (first) {
         setActiveModelTab(first);
+      } else {
+        // All failed — show first error tab
+        const firstFailed = selected.find((m) => trainErrors[m]);
+        if (firstFailed) setActiveModelTab(`${firstFailed}_err`);
       }
 
       console.log(
@@ -451,6 +460,7 @@ export default function AIToolsModal({
 
   // --- Helper to reset all form/connection state ---
   const resetAllState = () => {
+    setActiveTab("inputs");
     setCommonStatus({ connected: false, context: null });
     setSelectedTable("");
     setFields([]);
@@ -460,6 +470,7 @@ export default function AIToolsModal({
     setIndependentVars([]);
     setExcludedIndices([]);
     setResults({ lr: null, rf: null, xgb: null });
+    setTrainErrors({});
     setActiveModelTab(null);
     setAvailableTables([]);
   };
@@ -527,6 +538,15 @@ export default function AIToolsModal({
       console.log("✅ AI Tools state cleared");
     }
   }, [shouldDisconnect]);
+
+  // Switch tab based on openRunSaved flag from parent
+  useEffect(() => {
+    if (openRunSaved) {
+      setActiveTab("run-saved");
+    } else {
+      setActiveTab("inputs");
+    }
+  }, [openRunSaved]);
 
   if (!isOpen) return null;
 
@@ -665,6 +685,7 @@ export default function AIToolsModal({
         {activeTab === "results" && (
           <ResultsTabUI
             results={results}
+            trainErrors={trainErrors}
             activeModelTab={activeModelTab}
             setActiveModelTab={setActiveModelTab}
             onShowMap={onShowMap}
@@ -684,6 +705,9 @@ export default function AIToolsModal({
             setLoadingFieldName={setLoadingFieldName}
             token={token}
             userDb={userDb}
+            preSelectedModel={preSelectedRunModel}
+            openRunSaved={openRunSaved}
+            onPreSelectedConsumed={onPreSelectedRunModelConsumed}
           />
         )}
       </div>

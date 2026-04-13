@@ -8,6 +8,8 @@ export default function App() {
     () => localStorage.getItem("access_token") || "",
   );
   const [shouldDisconnect, setShouldDisconnect] = useState(false);
+  const [preSelectedRunModel, setPreSelectedRunModel] = useState(null);
+  const [openRunSaved, setOpenRunSaved] = useState(false);
 
   const handleShowMap = (payload) => {
     console.log("🗺️ Show on map:", payload);
@@ -16,9 +18,10 @@ export default function App() {
   // Comma-separated list of trusted origins that can send tokens.
   // Set VITE_TRUSTED_ORIGINS in .env to add more, e.g.:
   //   VITE_TRUSTED_ORIGINS=http://localhost:5173,https://partner-app.example.com
+  // "null" is included to allow local HTML file testing (file:// origin)
   const TRUSTED_ORIGINS = (
     import.meta.env.VITE_TRUSTED_ORIGINS ||
-    "http://localhost:5173,https://cama-core-14282293226.asia-southeast1.run.app,http://35.194.255.28:8000,http://localhost:8000"
+    "http://localhost:5173,http://localhost:9000,https://cama-core-14282293226.asia-southeast1.run.app,http://35.194.255.28:8000,http://localhost:8000,null"
   )
     .split(",")
     .map((o) => o.trim());
@@ -49,11 +52,21 @@ export default function App() {
       // Handle token authentication
       if (type === "AI_TOOLS_AUTH") {
         if (!receivedToken) return;
-
         console.log("✅ Received token from:", event.origin);
         localStorage.setItem("access_token", receivedToken);
         setToken(receivedToken);
         setShouldDisconnect(false);
+        setPreSelectedRunModel(null);
+        setOpenRunSaved(false);
+      }
+
+      // Handle open run saved tab with pre-selected model
+      if (type === "AI_TOOLS_OPEN_RUN_SAVED") {
+        const { model_name } = event.data;
+        console.log("📨 Received AI_TOOLS_OPEN_RUN_SAVED:", model_name);
+        if (model_name) setPreSelectedRunModel(model_name);
+        setOpenRunSaved(true);
+        setPanelOpen(true);
       }
 
       // Handle disconnect request
@@ -102,9 +115,12 @@ export default function App() {
             onShowMap={handleShowMap}
             token={token}
             shouldDisconnect={shouldDisconnect}
+            preSelectedRunModel={preSelectedRunModel}
+            openRunSaved={openRunSaved}
+            onPreSelectedRunModelConsumed={() => setPreSelectedRunModel(null)}
           />
         }
       />
     </Routes>
   );
-}
+} 
