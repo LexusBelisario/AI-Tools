@@ -243,84 +243,95 @@ async def train_linear_regression(
     dependent_var: str = Form(...),
     excluded_indices: Optional[str] = Form("[]"),
 ):
-    try:
-        file_gdf = None
-        is_db_mode = False
+    import asyncio
+    from fastapi.responses import StreamingResponse
 
-        if schema and schema.strip() and table_name and table_name.strip():
-            is_db_mode = True
-            print(f"Database mode detected: schema={schema}, table={table_name}")
-            df_full = df_from_db(schema.strip(), table_name.strip())
-        else:
-            print("File mode detected")
-            gdf = gdf_from_zip_or_parts(shapefiles=shapefiles, zip_file=zip_file)
-            file_gdf = gdf.copy()
-            df_full = pd.DataFrame(gdf.drop(columns="geometry", errors="ignore"))
+    queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_event_loop()
 
-        total_rows_before = len(df_full)
+    def emit(msg: str):
+        import json as _json
+        loop.call_soon_threadsafe(queue.put_nowait, f"event: progress\ndata: {_json.dumps(msg)}\n\n")
 
+    def run_training_sync():
         try:
-            excluded = json.loads(excluded_indices or "[]")
-            excluded_count = len(excluded)
-            if excluded_count:
-                print(f"Excluding {excluded_count} rows before training...")
-                df_full = df_full.drop(df_full.index[excluded]).reset_index(drop=True)
+            file_gdf = None
+            is_db_mode = False
+
+            if schema and schema.strip() and table_name and table_name.strip():
+                is_db_mode = True
+                emit("Loading data from database")
+                df_full = df_from_db(schema.strip(), table_name.strip())
             else:
-                print("No excluded rows received.")
-        except Exception as e:
-            print(f"Could not parse excluded_indices: {e}")
-            excluded_count = 0
+                emit("Loading shapefile")
+                gdf = gdf_from_zip_or_parts(shapefiles=shapefiles, zip_file=zip_file)
+                file_gdf = gdf.copy()
+                df_full = pd.DataFrame(gdf.drop(columns="geometry", errors="ignore"))
 
-        df_full["__original_index__"] = df_full.index
-        print(f"Stored original indices for {len(df_full)} rows after exclusions")
+            emit("Dropping excluded rows and NaN values")
+            try:
+                excluded = json.loads(excluded_indices or "[]")
+                if excluded:
+                    df_full = df_full.drop(df_full.index[excluded]).reset_index(drop=True)
+            except Exception as e:
+                print(f"Could not parse excluded_indices: {e}")
 
-        if independent_vars.startswith("["):
-            indep = json.loads(independent_vars)
-        else:
-            indep = [v.strip() for v in independent_vars.split(",")]
-        indep = [v for v in indep if v]
-        target = dependent_var.strip()
+            df_full["__original_index__"] = df_full.index
 
-        lower_map = {c.lower(): c for c in df_full.columns}
-        missing = [v for v in indep + [target] if v.lower() not in lower_map]
-        if missing:
-            return JSONResponse(status_code=400, content={"error": f"Missing variables: {missing}"})
+            if independent_vars.startswith("["):
+                indep = json.loads(independent_vars)
+            else:
+                indep = [v.strip() for v in independent_vars.split(",")]
+            indep = [v for v in indep if v]
+            target = dependent_var.strip()
 
-        df_full.columns = [c.lower() for c in df_full.columns]
-        pin_series, pin_colname = extract_pin_column(df_full)
-        indep = [v.lower() for v in indep]
-        target = target.lower()
+            lower_map = {c.lower(): c for c in df_full.columns}
+            missing = [v for v in indep + [target] if v.lower() not in lower_map]
+            if missing:
+                return {"error": f"Missing variables: {missing}"}
 
-        for col in indep + [target]:
-            df_full[col] = df_full[col].map(safe_to_float)
+            df_full.columns = [c.lower() for c in df_full.columns]
+            pin_series, pin_colname = extract_pin_column(df_full)
+            indep = [v.lower() for v in indep]
+            target = target.lower()
 
-        df_valid = df_full.dropna(subset=indep + [target])
-        if df_valid.empty:
-            return JSONResponse(status_code=400, content={"error": "No valid numeric data found."})
+            for col in indep + [target]:
+                df_full[col] = df_full[col].map(safe_to_float)
 
-        from sklearn.linear_model import LinearRegression
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.model_selection import train_test_split
+            df_valid = df_full.dropna(subset=indep + [target])
+            if df_valid.empty:
+                return {"error": "No valid numeric data found."}
 
-        X = df_valid[indep]
-        y = df_valid[target]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+            from sklearn.linear_model import LinearRegression
+            from sklearn.preprocessing import StandardScaler
+            from sklearn.model_selection import train_test_split
 
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_test_scaled = scaler.transform(X_test)
+            emit("Splitting into 70/30 train and test sets")
+            X = df_valid[indep]
+            y = df_valid[target]
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-        model = LinearRegression()
-        model.fit(X_train_scaled, y_train)
-        preds = model.predict(X_test_scaled)
-        residuals = y_test - preds
+            emit("Fitting StandardScaler on training data")
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            X_test_scaled = scaler.transform(X_test)
 
-        artifact_base = build_artifact_base_name("LR", table_name or "")
-        export_path = os.path.join(EXPORT_DIR, artifact_base)
-        os.makedirs(export_path, exist_ok=True)
+            emit("Fitting LinearRegression model")
+            model = LinearRegression()
+            model.fit(X_train_scaled, y_train)
 
-        model_path = os.path.join(export_path, f"{artifact_base}.pkl")
-        try:
+            emit("Predicting on test set, computing residuals")
+            preds = model.predict(X_test_scaled)
+            residuals = y_test - preds
+
+            emit("Computing R\u00b2, MSE, MAE, RMSE")
+
+            artifact_base = build_artifact_base_name("LR", table_name or "")
+            export_path = os.path.join(EXPORT_DIR, artifact_base)
+            os.makedirs(export_path, exist_ok=True)
+
+            emit("Saving model to .pkl file")
+            model_path = os.path.join(export_path, f"{artifact_base}.pkl")
             joblib.dump(
                 {
                     "model": model,
@@ -332,250 +343,141 @@ async def train_linear_regression(
                 },
                 model_path,
             )
-            print(f"Saved model: {os.path.basename(model_path)}")
-        except Exception as e:
-            print(f"❌ Failed to save model: {e}")
-            raise
 
-        try:
+            emit("Generating PDF report and plots")
             metrics, png_paths, t_tests, pdf_path = export_full_report_and_artifacts(
-                export_path,
-                model,
-                scaler,
-                indep,
-                target,
-                X_train_scaled,
-                y_train,
-                X_test_scaled,
-                y_test,
-                preds,
-                residuals,
-                X_train_unscaled=X_train,
-                artifact_base=artifact_base,
+                export_path, model, scaler, indep, target,
+                X_train_scaled, y_train, X_test_scaled, y_test, preds, residuals,
+                X_train_unscaled=X_train, artifact_base=artifact_base,
             )
-        except Exception as e:
-            import traceback
-            print(f"❌ Report generation failed: {e}")
-            print(traceback.format_exc())
-            raise
 
-        preds_valid = model.predict(scaler.transform(df_valid[indep]))
-        df_valid = df_valid.copy()
-        df_valid["prediction"] = preds_valid
+            emit("Writing predictions to CSV")
+            preds_valid = model.predict(scaler.transform(df_valid[indep]))
+            df_valid = df_valid.copy()
+            df_valid["prediction"] = preds_valid
+            safe_target_name = "actual_val" if len(target) > 10 else target
+            csv_path = os.path.join(export_path, f"{artifact_base}.csv")
+            csv_df = df_valid[indep + [target, "prediction"]].copy()
+            if pin_series is not None:
+                csv_df.insert(0, "PIN", pin_series.iloc[df_valid.index].values)
+            csv_df.to_csv(csv_path, index=False)
 
-        safe_target_name = "actual_val" if len(target) > 10 else target
-
-        csv_path = os.path.join(export_path, f"{artifact_base}.csv")
-        csv_df = df_valid[indep + [target, "prediction"]].copy()
-
-        if pin_series is not None:
-            csv_df.insert(0, "PIN", pin_series.iloc[df_valid.index].values)
-
-        csv_df.to_csv(csv_path, index=False)
-        print(f"Exported cleaned CSV (excluded rows removed): {csv_path}")
-
-        zip_out = None
-        try:
-            original_indices = df_valid["__original_index__"].tolist()
-            print(f"Original indices to map: {original_indices[:10]}... (showing first 10)")
-
-            if is_db_mode:
-                print("Database mode: fetching geometry for export")
-                gdf_db = gdf_from_db_with_geometry(schema, table_name)
-                valid_gdf = gdf_db.iloc[original_indices].copy()
-
-                print(f"GeoDataFrame shape: {valid_gdf.shape}")
-                print(f"Valid rows count: {len(df_valid)}")
-
-                columns_to_drop = []
-                for col in valid_gdf.columns:
-                    if col.upper() == "UNIT_VALUE":
-                        columns_to_drop.append(col)
-                        print(f"Dropping original column '{col}' to avoid collision")
-                    elif col.upper() == "MARKET_VAL":
-                        columns_to_drop.append(col)
-                        print(f"Dropping original column '{col}'")
-
-                if columns_to_drop:
-                    valid_gdf = valid_gdf.drop(columns=columns_to_drop, errors="ignore")
-
-                if pin_series is not None:
-                    try:
-                        upsert_pin_field(valid_gdf, pin_series.iloc[original_indices].values, preferred_name="PIN")
-                        drop_duplicate_pin_fields(valid_gdf, keep_name="PIN")
-                        print("PIN field updated (no duplicates)")
-                    except Exception as e:
-                        print(f"Could not update PIN field: {e}")
-
-                valid_gdf[safe_target_name] = df_valid[target].values
-                print(f"Added actual values as '{safe_target_name}'")
-
-                valid_gdf["prediction"] = df_valid["prediction"].values
-                print("Added prediction column")
-
-                print(f"\n{'=' * 60}")
-                print("VERIFICATION:")
-                print(f"Rows in valid_gdf: {len(valid_gdf)}")
-                print(f"'{safe_target_name}' exists: {safe_target_name in valid_gdf.columns}")
-                print(f"Sample actual values: {valid_gdf[safe_target_name].head().tolist()}")
-                print(f"'prediction' exists: {'prediction' in valid_gdf.columns}")
-                print(f"Sample predictions: {valid_gdf['prediction'].head().tolist()}")
-                print(f"{'=' * 60}\n")
-
-                shp_pred_dir = os.path.join(export_path, "predicted_shapefile")
-                os.makedirs(shp_pred_dir, exist_ok=True)
-                shp_pred_path = os.path.join(shp_pred_dir, "predicted_output.shp")
-
-                valid_gdf = valid_gdf.drop(columns=["__original_index__"], errors="ignore")
-                valid_gdf.to_file(shp_pred_path)
-                print(f"Shapefile saved: {shp_pred_path}")
-
-                zip_out = os.path.join(export_path, "predicted_output.zip")
-                with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
-                    for f in os.listdir(shp_pred_dir):
-                        z.write(os.path.join(shp_pred_dir, f), f)
-                print(f"ZIP created: {zip_out}")
-
-            elif file_gdf is not None:
-                print("File mode: using uploaded geometry for export")
-                valid_gdf = file_gdf.iloc[original_indices].copy()
-
-                print(f"GeoDataFrame shape: {valid_gdf.shape}")
-                print(f"Columns: {valid_gdf.columns.tolist()}")
-
-                columns_to_drop = []
-                for col in valid_gdf.columns:
-                    if col.upper() == "UNIT_VALUE":
-                        columns_to_drop.append(col)
-                        print(f"Dropping original column '{col}' to avoid collision")
-                    elif col.upper() == "MARKET_VAL":
-                        columns_to_drop.append(col)
-                        print(f"Dropping original column '{col}' (too large values)")
-
-                if columns_to_drop:
-                    valid_gdf = valid_gdf.drop(columns=columns_to_drop, errors="ignore")
-
-                if pin_series is not None:
-                    try:
-                        upsert_pin_field(valid_gdf, pin_series.iloc[original_indices].values, preferred_name="PIN")
-                        drop_duplicate_pin_fields(valid_gdf, keep_name="PIN")
-                        print("PIN field updated (no duplicates)")
-                    except Exception as e:
-                        print(f"Could not update PIN field: {e}")
-
-                valid_gdf[safe_target_name] = df_valid[target].values
-                print(f"Added actual values as '{safe_target_name}'")
-
-                print(f"Checking column '{safe_target_name}': {safe_target_name in valid_gdf.columns}")
-                print(f"Sample values: {valid_gdf[safe_target_name].head(3).tolist()}")
-
-                valid_gdf["prediction"] = df_valid["prediction"].values
-                print("Added prediction column")
-
-                print(f"\nFinal columns in shapefile ({len(valid_gdf.columns)} total):")
-                for col in valid_gdf.columns:
-                    print(f" - {col} (length: {len(col)})")
-
-                shp_pred_dir = os.path.join(export_path, "predicted_shapefile")
-                os.makedirs(shp_pred_dir, exist_ok=True)
-                shp_pred_path = os.path.join(shp_pred_dir, "predicted_output.shp")
-
-                valid_gdf = valid_gdf.drop(columns=["__original_index__"], errors="ignore")
-
-                print("\nSaving shapefile with these key columns:")
-                print(f" - {safe_target_name}: {safe_target_name in valid_gdf.columns}")
-                print(f" - prediction: {'prediction' in valid_gdf.columns}")
-
-                valid_gdf.to_file(shp_pred_path)
-                print(f"Shapefile created with {len(valid_gdf)} features")
-
-                zip_out = os.path.join(export_path, "predicted_output.zip")
-                with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
-                    for f in os.listdir(shp_pred_dir):
-                        z.write(os.path.join(shp_pred_dir, f), f)
-
-                print(f"Created ZIP: {zip_out}")
-
-            else:
-                print("No geometry data available (no shapefile output)")
-
-        except Exception as e:
-            print(f"Error creating shapefile output: {e}")
-            import traceback
-            traceback.print_exc()
+            emit("Building predicted shapefile and ZIP")
             zip_out = None
+            try:
+                original_indices = df_valid["__original_index__"].tolist()
+                if is_db_mode:
+                    gdf_db = gdf_from_db_with_geometry(schema, table_name)
+                    valid_gdf = gdf_db.iloc[original_indices].copy()
+                    columns_to_drop = [col for col in valid_gdf.columns if col.upper() in ("UNIT_VALUE", "MARKET_VAL")]
+                    if columns_to_drop:
+                        valid_gdf = valid_gdf.drop(columns=columns_to_drop, errors="ignore")
+                    if pin_series is not None:
+                        upsert_pin_field(valid_gdf, pin_series.iloc[original_indices].values, preferred_name="PIN")
+                        drop_duplicate_pin_fields(valid_gdf, keep_name="PIN")
+                    valid_gdf[safe_target_name] = df_valid[target].values
+                    valid_gdf["prediction"] = df_valid["prediction"].values
+                elif file_gdf is not None:
+                    valid_gdf = file_gdf.iloc[original_indices].copy()
+                    columns_to_drop = [col for col in valid_gdf.columns if col.upper() in ("UNIT_VALUE", "MARKET_VAL")]
+                    if columns_to_drop:
+                        valid_gdf = valid_gdf.drop(columns=columns_to_drop, errors="ignore")
+                    if pin_series is not None:
+                        upsert_pin_field(valid_gdf, pin_series.iloc[original_indices].values, preferred_name="PIN")
+                        drop_duplicate_pin_fields(valid_gdf, keep_name="PIN")
+                    valid_gdf[safe_target_name] = df_valid[target].values
+                    valid_gdf["prediction"] = df_valid["prediction"].values
+                else:
+                    raise ValueError("No geometry source")
 
-        counts, bins = np.histogram(residuals, bins=20)
-        bin_centers = 0.5 * (bins[:-1] + bins[1:])
+                shp_pred_dir = os.path.join(export_path, "predicted_shapefile")
+                os.makedirs(shp_pred_dir, exist_ok=True)
+                valid_gdf = valid_gdf.drop(columns=["__original_index__"], errors="ignore")
+                valid_gdf.to_file(os.path.join(shp_pred_dir, "predicted_output.shp"))
+                zip_out = os.path.join(export_path, "predicted_output.zip")
+                with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
+                    for f in os.listdir(shp_pred_dir):
+                        z.write(os.path.join(shp_pred_dir, f), f)
+            except Exception as e:
+                print(f"Shapefile export error: {e}")
 
-        print("Computing variable distributions...")
-        variable_distributions = compute_variable_distributions(df_valid, indep)
-        print(f"Computed distributions for {len(variable_distributions)} variables")
+            counts, bins = np.histogram(residuals, bins=20)
+            bin_centers = 0.5 * (bins[:-1] + bins[1:])
+            variable_distributions = compute_variable_distributions(df_valid, indep)
 
-        base_url = "/api/ai-tools/download"
-        plots = {key: f"{base_url}?file={path}" for key, path in png_paths.items()}
+            preview_df = df_valid.copy()
+            if pin_series is not None:
+                preview_df.insert(0, "PIN", pin_series.iloc[df_valid.index].values)
+            preview_cols = (["PIN"] if pin_series is not None else []) + indep + [target, "prediction"]
+            cama_preview = preview_df[preview_cols].head(100).to_dict("records")
 
-        downloads = {
-            "model": f"{base_url}?file={model_path}",
-            "report": f"{base_url}?file={pdf_path}",
-            "cama_csv": f"{base_url}?file={csv_path}",
-        }
+            base_url = "/api/ai-tools/download"
+            plots = {key: f"{base_url}?file={path}" for key, path in png_paths.items()}
+            downloads = {
+                "model": f"{base_url}?file={model_path}",
+                "report": f"{base_url}?file={pdf_path}",
+                "cama_csv": f"{base_url}?file={csv_path}",
+            }
+            if zip_out:
+                downloads["shapefile"] = f"{base_url}?file={zip_out}"
+                downloads["geojson"] = f"/api/ai-tools/preview-geojson?file_path={zip_out}"
 
-        if zip_out:
-            downloads["shapefile"] = f"{base_url}?file={zip_out}"
-            downloads["geojson"] = f"/api/ai-tools/preview-geojson?file_path={zip_out}"
+            return {
+                "model_name": artifact_base,
+                "model_id": artifact_base,
+                "dependent_var": safe_target_name,
+                "original_dependent_var": target,
+                "metrics": {k: float(v) for k, v in metrics.items()},
+                "features": indep,
+                "importance": [{"feature": feat, "value": float(val)} for feat, val in zip(indep, model.coef_)],
+                "coefficients": {k: float(v) for k, v in zip(indep, model.coef_)},
+                "intercept": float(model.intercept_),
+                "t_test": t_tests,
+                "interactive_data": {
+                    "residuals": residuals.tolist(),
+                    "residual_bins": bin_centers.tolist(),
+                    "residual_counts": counts.tolist(),
+                    "y_test": y_test.tolist(),
+                    "preds": preds.tolist(),
+                },
+                "variable_distributions": variable_distributions,
+                "cama_preview": cama_preview,
+                "plots": plots,
+                "downloads": downloads,
+                "is_db_mode": is_db_mode,
+                "message": "Model trained successfully.",
+            }
 
-        print("Creating training result preview...")
-        preview_df = df_valid.copy()
+        except Exception as e:
+            import traceback
+            print(f"TRAIN ERROR: {e}")
+            print(traceback.format_exc())
+            return {"error": str(e)}
 
-        if pin_series is not None:
-            preview_df = preview_df.copy()
-            preview_df.insert(0, "PIN", pin_series.iloc[df_valid.index].values)
+    async def event_stream():
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
 
-        preview_cols = []
-        if pin_series is not None:
-            preview_cols.append("PIN")
+    async def producer():
+        import asyncio, contextvars
+        ctx = contextvars.copy_context()
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, ctx.run, run_training_sync)
+        import json as _json
+        queue.put_nowait(f"event: result\ndata: {_json.dumps(result)}\n\n")
+        queue.put_nowait(None)
 
-        preview_cols.extend(indep)
-        preview_cols.append(target)
-        preview_cols.append("prediction")
-
-        cama_preview = preview_df[preview_cols].head(100).to_dict("records")
-        print(f"Created preview with {len(cama_preview)} rows")
-
-        metrics = {k: float(v) for k, v in metrics.items()}
-
-        return {
-            "model_name": artifact_base,
-            "model_id": artifact_base,
-            "dependent_var": safe_target_name,
-            "original_dependent_var": target,
-            "metrics": metrics,
-            "features": indep,
-            "importance": [
-                {"feature": feat, "value": float(val)}
-                for feat, val in zip(indep, model.coef_)
-            ],
-            "coefficients": {k: float(v) for k, v in zip(indep, model.coef_)},
-            "intercept": float(model.intercept_),
-            "t_test": t_tests,
-            "interactive_data": {
-                "residuals": residuals.tolist(),
-                "residual_bins": bin_centers.tolist(),
-                "residual_counts": counts.tolist(),
-                "y_test": y_test.tolist(),
-                "preds": preds.tolist(),
-            },
-            "variable_distributions": variable_distributions,
-            "cama_preview": cama_preview,
-            "plots": plots,
-            "downloads": downloads,
-            "is_db_mode": is_db_mode,
-            "message": "Model trained successfully (excluded rows removed from exports).",
-        }
-
-    except Exception as e:
-        import traceback
-        print(f"TRAIN ERROR: {e}")
-        print(traceback.format_exc())
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    asyncio.create_task(producer())
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": "true",
+        },
+    )

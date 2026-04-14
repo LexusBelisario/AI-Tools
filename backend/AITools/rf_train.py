@@ -67,338 +67,218 @@ async def train_rf_model(
     dependent_var: str = Form(...),
     excluded_indices: Optional[str] = Form("[]"),
 ):
-    """
-    LR-style flow:
-    1) detect input mode + load
-    2) parse + validate fields
-    3) numeric convert + dropna
-    4) excluded rows handling
-    5) split + scale (RF computation)
-    6) train + evaluate
-    7) export artifacts (pdf/plots/csv/shp zip/db)
-    8) return response (same shape expectation)
-    """
-    try:
-        # ===========================
-        # 1) INPUT MODE DETECTION
-        # ===========================
-        file_gdf = None
-        is_db_mode = False
+    import asyncio
+    from fastapi.responses import StreamingResponse
 
-        if schema and schema.strip() and table_name and table_name.strip():
-            is_db_mode = True
-            print(f"✅ RF DB mode: schema={schema}, table={table_name}")
-            df_full = df_from_db(schema.strip(), table_name.strip())
-        else:
-            print("✅ RF File mode")
-            gdf = gdf_from_zip_or_parts(shapefiles=shapefiles, zip_file=zip_file)
-            file_gdf = gdf.copy()
-            df_full = gdf.drop(columns=[c for c in gdf.columns if str(c).lower() in GEOM_NAMES], errors="ignore")
+    queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_event_loop()
 
-        if df_full is None or df_full.empty:
-            return JSONResponse(status_code=400, content={"error": "No data loaded."})
+    def emit(msg: str):
+        import json as _json
+        loop.call_soon_threadsafe(queue.put_nowait, f"event: progress\ndata: {_json.dumps(msg)}\n\n")
 
-        # ===========================
-        # 2) PARSE VARIABLES
-        # ===========================
-        indep = json.loads(independent_vars) if isinstance(independent_vars, str) else independent_vars
-        target = dependent_var
-
-        if target not in df_full.columns:
-            return JSONResponse(status_code=400, content={"error": f"Dependent variable '{target}' not found in data."})
-
-        for col in indep:
-            if col not in df_full.columns:
-                return JSONResponse(status_code=400, content={"error": f"Independent variable '{col}' not found in data."})
-
-        # ===========================
-        # 3) STORE ORIGINAL INDICES (LR-style)
-        # ===========================
-        df_full = df_full.copy()
-        df_full["__orig_index__"] = df_full.index
-        print(f"📍 Stored original indices for {len(df_full)} rows")
-
-        # ===========================
-        # 4) PIN HANDLING (remove from features, keep for preview/csv)
-        # ===========================
-        pin_series, pin_colname = extract_pin_column(df_full)
-        if pin_colname and pin_colname in df_full.columns:
-            if pin_colname in indep:
-                indep = [c for c in indep if c != pin_colname]
-                print(f"   🔧 Removed PIN column '{pin_colname}' from training features")
-
-        # ===========================
-        # 5) NUMERIC CLEANUP
-        # ===========================
-        for col in indep + [target]:
-            df_full[col] = df_full[col].map(safe_to_float)
-
-        # ===========================
-        # 6) DROP NANS (selected only)
-        # ===========================
-        df_model = df_full[indep + [target, "__orig_index__"]].copy()
-        before = len(df_model)
-        df_model = df_model.dropna(subset=indep + [target])
-        after = len(df_model)
-        print(f"🔢 RF dropped {before - after} rows with NaNs in selected columns.")
-
-        if df_model.empty:
-            return JSONResponse(status_code=400, content={"error": "No valid rows after cleaning."})
-
-        # ===========================
-        # 7) EXCLUDED ROWS (LR-style using __orig_index__)
-        # ===========================
+    def run_training_sync():
         try:
-            excluded_list = json.loads(excluded_indices) if excluded_indices else []
-            if not isinstance(excluded_list, list):
-                excluded_list = []
-        except Exception:
-            excluded_list = []
+            file_gdf = None
+            is_db_mode = False
 
-        excluded_list = [
-            int(i) for i in excluded_list
-            if isinstance(i, int) or (isinstance(i, str) and i.isdigit())
-        ]
+            if schema and schema.strip() and table_name and table_name.strip():
+                is_db_mode = True
+                emit("Loading data from database")
+                df_full = df_from_db(schema.strip(), table_name.strip())
+            else:
+                emit("Loading shapefile")
+                gdf = gdf_from_zip_or_parts(shapefiles=shapefiles, zip_file=zip_file)
+                file_gdf = gdf.copy()
+                df_full = gdf.drop(columns=[c for c in gdf.columns if str(c).lower() in GEOM_NAMES], errors="ignore")
 
-        if excluded_list:
-            mask = df_model["__orig_index__"].isin(excluded_list)
-            excluded_count = int(mask.sum())
-            df_model = df_model[~mask].copy()
-            print(f"✅ RF: excluding {excluded_count} rows before training...")
-        else:
-            print("✅ RF: no excluded rows received.")
+            if df_full is None or df_full.empty:
+                return {"error": "No data loaded."}
 
-        if df_model.empty:
-            return JSONResponse(status_code=400, content={"error": "All rows were excluded. Nothing to train."})
+            indep = json.loads(independent_vars) if isinstance(independent_vars, str) else independent_vars
+            target = dependent_var
 
-        print(f"📊 Final training dataset: {len(df_model)} rows")
+            if target not in df_full.columns:
+                return {"error": f"Dependent variable '{target}' not found in data."}
+            for col in indep:
+                if col not in df_full.columns:
+                    return {"error": f"Independent variable '{col}' not found in data."}
 
-        # ===========================
-        # 8) SPLIT + SCALE (RF computation aligned to Tkinter)
-        # ===========================
-        X = df_model[indep].values
-        y = df_model[target].values
+            df_full = df_full.copy()
+            df_full["__orig_index__"] = df_full.index
+            pin_series, pin_colname = extract_pin_column(df_full)
+            if pin_colname and pin_colname in df_full.columns:
+                if pin_colname in indep:
+                    indep = [c for c in indep if c != pin_colname]
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.3, random_state=42
-        )
+            emit("Dropping excluded rows and NaN values")
+            for col in indep + [target]:
+                df_full[col] = df_full[col].map(safe_to_float)
 
-        scaler = StandardScaler().fit(X_train)
-        X_train_scaled = scaler.transform(X_train)
-        X_test_scaled = scaler.transform(X_test)
+            df_model = df_full[indep + [target, "__orig_index__"]].copy()
+            df_model = df_model.dropna(subset=indep + [target])
 
-        # ===========================
-        # 9) TRAIN RF (actual RF computation)
-        # ===========================
-        print("🚀 Training Random Forest model...")
-        model = RandomForestRegressor(
-            n_estimators=100,   # same default as Tkinter reference
-            n_jobs=-1,
-            random_state=42
-        )
-        model.fit(X_train_scaled, y_train)
+            try:
+                excluded_list = json.loads(excluded_indices) if excluded_indices else []
+                excluded_list = [int(i) for i in excluded_list if isinstance(i, (int, str)) and str(i).isdigit()]
+                if excluded_list:
+                    mask = df_model["__orig_index__"].isin(excluded_list)
+                    df_model = df_model[~mask].copy()
+            except Exception:
+                pass
 
-        y_pred = model.predict(X_test_scaled)
+            if df_model.empty:
+                return {"error": "No valid rows after cleaning."}
 
-        # 10) df_valid (valid rows, keep original indices)
-        valid_indices = df_model["__orig_index__"].values
-        df_valid = df_full.loc[valid_indices].copy()
-        df_valid = df_valid[indep + [target]].copy()
+            emit("Splitting into 70/30 train and test sets")
+            X = df_model[indep].values
+            y = df_model[target].values
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-        # 11) EXPORT ARTIFACTS (keep everything)
-        artifact_base = build_artifact_base_name("RF", table_name or "")
-        export_path = os.path.join(EXPORT_DIR, artifact_base)
-        os.makedirs(export_path, exist_ok=True)
-        print(f"📦 Creating export folder: {artifact_base}")
+            emit("Fitting StandardScaler on training data")
+            scaler = StandardScaler().fit(X_train)
+            X_train_scaled = scaler.transform(X_train)
+            X_test_scaled = scaler.transform(X_test)
 
-        try:
+            emit("Fitting RandomForestRegressor (100 trees)")
+            model = RandomForestRegressor(n_estimators=100, n_jobs=-1, random_state=42)
+            model.fit(X_train_scaled, y_train)
+            y_pred = model.predict(X_test_scaled)
+
+            emit("Computing R\u00b2, MSE, MAE, RMSE")
+            valid_indices = df_model["__orig_index__"].values
+            df_valid = df_full.loc[valid_indices].copy()
+            df_valid = df_valid[indep + [target]].copy()
+
+            artifact_base = build_artifact_base_name("RF", table_name or "")
+            export_path = os.path.join(EXPORT_DIR, artifact_base)
+            os.makedirs(export_path, exist_ok=True)
+
+            emit("Generating PDF report and plots")
             metrics, png_paths, pdf_path = export_rf_report_and_artifacts(
-                export_path=export_path,
-                model=model,
-                scaler=scaler,
-                feature_names=indep,
-                target=target,
-                X_train=X_train_scaled,
-                y_train=y_train,
-                X_test=X_test_scaled,
-                y_test=y_test,
-                y_pred=y_pred,
-                df_valid=df_valid,
-                artifact_base=artifact_base,
+                export_path=export_path, model=model, scaler=scaler,
+                feature_names=indep, target=target,
+                X_train=X_train_scaled, y_train=y_train,
+                X_test=X_test_scaled, y_test=y_test, y_pred=y_pred,
+                df_valid=df_valid, artifact_base=artifact_base,
             )
+
+            emit("Saving model to .pkl file")
+            model_path = os.path.join(export_path, f"{artifact_base}.pkl")
+            joblib.dump(
+                {"model": model, "scaler": scaler, "features": indep, "target": target,
+                 "model_type": "rf", "trained_at": datetime.now(PHT).isoformat()},
+                model_path, compress=3,
+            )
+
+            emit("Writing predictions to CSV")
+            df_export = df_valid.copy()
+            pin_series_export, _ = extract_pin_column(df_full)
+            if pin_series_export is not None:
+                try:
+                    df_export["PIN"] = pin_series_export.iloc[df_export.index].values
+                except Exception:
+                    pass
+            X_valid = scaler.transform(df_valid[indep].values)
+            df_export["prediction"] = model.predict(X_valid)
+            csv_cols = (["PIN"] if "PIN" in df_export.columns else []) + indep + [target, "prediction"]
+            csv_path = os.path.join(export_path, f"{artifact_base}.csv")
+            df_export[csv_cols].to_csv(csv_path, index=False)
+
+            emit("Building predicted shapefile and ZIP")
+            zip_out = None
+            try:
+                vi = df_valid.index.tolist()
+                if is_db_mode:
+                    gdf_db = gdf_from_db_with_geometry(schema, table_name)
+                    valid_gdf = gdf_db.iloc[vi].copy()
+                    if pin_series is not None:
+                        upsert_pin_field(valid_gdf, pin_series.iloc[vi].values)
+                    drop_duplicate_pin_fields(valid_gdf)
+                    valid_gdf["prediction"] = df_export["prediction"].values
+                elif file_gdf is not None:
+                    valid_gdf = file_gdf.iloc[vi].copy()
+                    if pin_series is not None:
+                        try:
+                            valid_gdf["PIN"] = pin_series.iloc[vi].values
+                        except Exception:
+                            pass
+                    valid_gdf["prediction"] = df_export["prediction"].values
+                else:
+                    raise ValueError("No geometry source available")
+
+                shp_pred_dir = os.path.join(export_path, "predicted_shapefile")
+                os.makedirs(shp_pred_dir, exist_ok=True)
+                valid_gdf.to_file(os.path.join(shp_pred_dir, "RandomForest_Predicted.shp"))
+                zip_out = os.path.join(export_path, "RandomForest_Predicted.zip")
+                with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
+                    for fname in os.listdir(shp_pred_dir):
+                        z.write(os.path.join(shp_pred_dir, fname), fname)
+            except Exception as e:
+                print(f"Shapefile export error: {e}")
+
+            residuals = y_test - y_pred
+            counts, bin_edges = np.histogram(residuals, bins=20)
+            variable_distributions = compute_variable_distributions(df_model[indep].copy(), indep)
+
+            preview_df = df_valid.copy()
+            preview_df["prediction"] = model.predict(scaler.transform(df_valid[indep].values))
+            if pin_series is not None:
+                try:
+                    preview_df["PIN"] = pin_series.iloc[preview_df.index].values
+                except Exception:
+                    pass
+            preview_cols = (["PIN"] if "PIN" in preview_df.columns else []) + indep + [target, "prediction"]
+            cama_preview = preview_df[preview_cols].head(100).to_dict("records")
+
+            base_url = "/api/ai-tools/download"
+            wrapped_plots = {k: f"{base_url}?file={v}" if v else None for k, v in png_paths.items()}
+            wrapped_downloads = {k: f"{base_url}?file={v}" for k, v in {"model": model_path, "report": pdf_path, "cama_csv": csv_path}.items()}
+            if zip_out:
+                wrapped_downloads["shapefile"] = f"{base_url}?file={zip_out}"
+                wrapped_downloads["geojson"] = f"/api/ai-tools/preview-geojson?file_path={zip_out}"
+
+            return {
+                "model_name": artifact_base, "model_id": artifact_base,
+                "message": "Random Forest training completed successfully.",
+                "dependent_var": target, "metrics": metrics, "features": indep,
+                "importance": [{"feature": f, "value": float(v)} for f, v in zip(indep, model.feature_importances_)] if hasattr(model, "feature_importances_") else [],
+                "interactive_data": {"residuals": residuals.tolist(), "residual_bins": bin_edges.tolist(), "residual_counts": counts.tolist(), "y_test": y_test.tolist(), "preds": y_pred.tolist()},
+                "variable_distributions": variable_distributions, "cama_preview": cama_preview,
+                "plots": wrapped_plots, "downloads": wrapped_downloads,
+                "is_db_mode": is_db_mode, "isRunMode": False, "record_count": int(len(df_model)),
+            }
+
         except Exception as e:
             import traceback
-            print(f"❌ RF report generation failed: {e}")
-            print(traceback.format_exc())
-            raise
+            print(f"❌ RF TRAIN ERROR: {e}")
+            traceback.print_exc()
+            return {"error": str(e)}
 
-        plots = png_paths
+    async def event_stream():
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
 
-        # Save model
-        model_path = os.path.join(export_path, f"{artifact_base}.pkl")
-        try:
-            joblib.dump(
-                {
-                    "model": model,
-                    "scaler": scaler,
-                    "features": indep,
-                    "target": target,
-                    "model_type": "rf",
-                    "trained_at": datetime.now(PHT).isoformat(),
-                },
-                model_path,
-                compress=3,
-            )
-            print(f"Saved model: {os.path.basename(model_path)}")
-        except Exception as e:
-            print(f"❌ Failed to save RF model: {e}")
-            raise
+    async def producer():
+        import asyncio, contextvars
+        ctx = contextvars.copy_context()
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, ctx.run, run_training_sync)
+        import json as _json
+        queue.put_nowait(f"event: result\ndata: {_json.dumps(result)}\n\n")
+        queue.put_nowait(None)
 
-        # Export CSV
-        df_export = df_valid.copy()
-        pin_series_export, _ = extract_pin_column(df_full)
-        if pin_series_export is not None:
-            try:
-                df_export["PIN"] = pin_series_export.iloc[df_export.index].values
-            except Exception as e:
-                print(f"⚠ PIN injection failed: {e}")
-        X_valid = df_valid[indep].values
-        if scaler is not None:
-            X_valid = scaler.transform(X_valid)
-        df_export["prediction"] = model.predict(X_valid)
-        csv_cols = []
-        if "PIN" in df_export.columns:
-            csv_cols.append("PIN")
-        csv_cols.extend(indep)
-        csv_cols.extend([target, "prediction"])
-        csv_path = os.path.join(export_path, f"{artifact_base}.csv")
-        df_export[csv_cols].to_csv(csv_path, index=False)
-        print(f"Exported CSV: {csv_path}")
-
-        # Export shapefile
-        zip_out = None
-        try:
-            valid_indices = df_valid.index.tolist()
-            if is_db_mode:
-                gdf_db = gdf_from_db_with_geometry(schema, table_name)
-                valid_gdf = gdf_db.iloc[valid_indices].copy()
-                if pin_series is not None:
-                    upsert_pin_field(valid_gdf, pin_series.iloc[valid_indices].values)
-                drop_duplicate_pin_fields(valid_gdf)
-                valid_gdf["prediction"] = df_export["prediction"].values
-            elif file_gdf is not None:
-                valid_gdf = file_gdf.iloc[valid_indices].copy()
-                if pin_series is not None:
-                    try:
-                        valid_gdf["PIN"] = pin_series.iloc[valid_indices].values
-                    except Exception as e:
-                        print(f"⚠️ Could not add PIN: {e}")
-                valid_gdf["prediction"] = df_export["prediction"].values
-            else:
-                raise ValueError("No geometry source available")
-
-            shp_pred_dir = os.path.join(export_path, "predicted_shapefile")
-            os.makedirs(shp_pred_dir, exist_ok=True)
-            shp_pred_path = os.path.join(shp_pred_dir, "RandomForest_Predicted.shp")
-            valid_gdf.to_file(shp_pred_path)
-            zip_out = os.path.join(export_path, "RandomForest_Predicted.zip")
-            with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
-                for fname in os.listdir(shp_pred_dir):
-                    z.write(os.path.join(shp_pred_dir, fname), fname)
-            print(f"ZIP created: {zip_out}")
-        except Exception as e:
-            print(f"⚠️ Shapefile export error: {e}")
-
-        downloads = {
-            "model":    model_path,
-            "report":   pdf_path,
-            "cama_csv": csv_path,
-            "shapefile": zip_out,
-        }
-
-        # 12) INTERACTIVE DATA (same payload concept)
-        residuals = y_test - y_pred
-        counts, bin_edges = np.histogram(residuals, bins=20)
-        residual_bins = bin_edges.tolist()
-        residual_counts = counts.tolist()
-
-        # 13) VARIABLE DISTRIBUTIONS (keep)
-        print("📊 Computing variable distributions for RF...")
-        variable_distributions = compute_variable_distributions(
-            df_model[indep].copy(),
-            indep
-        )
-        print(f"✅ Computed distributions for {len(variable_distributions)} variables")
-
-        # ===========================
-        # 14) PREVIEW (keep)
-        # ===========================
-        print("📋 Creating training result preview...")
-        preview_df = df_valid.copy()
-
-        preds_valid = model.predict(scaler.transform(df_valid[indep].values))
-        preview_df["prediction"] = preds_valid
-
-        if pin_series is not None:
-            try:
-                preview_df["PIN"] = pin_series.iloc[preview_df.index].values
-                print("   ✅ Added PIN to preview")
-            except Exception as e:
-                print(f"   ⚠️ Could not add PIN to preview: {e}")
-
-        preview_cols = []
-        if "PIN" in preview_df.columns:
-            preview_cols.append("PIN")
-        preview_cols.extend(indep)
-        preview_cols.append(target)
-        preview_cols.append("prediction")
-
-        cama_preview = preview_df[preview_cols].head(100).to_dict("records")
-        print(f"   ✅ Created preview with {len(cama_preview)} rows")
-
-        # ===========================
-        # 15) WRAP URLS (same style)
-        # ===========================
-        base_url = "/api/ai-tools/download"
-        wrapped_plots = _wrap_download_urls(plots, base_url)
-        wrapped_downloads = _wrap_download_urls(downloads, base_url)
-
-        if "shapefile" in downloads and downloads["shapefile"]:
-            shp_path = downloads["shapefile"]
-            wrapped_downloads["geojson"] = f"/api/ai-tools/preview-geojson?file_path={shp_path}"
-
-        # ===========================
-        # 16) RETURN RESPONSE (LR-like feel)
-        # ===========================
-        return {
-            "model_name": artifact_base,
-            "model_id": artifact_base,
-            "message": "Random Forest training completed successfully.",
-            "dependent_var": target,
-            "metrics": metrics,
-            "features": indep,
-            "importance": [
-                {"feature": feat, "value": float(val)}
-                for feat, val in zip(indep, model.feature_importances_)
-            ] if hasattr(model, "feature_importances_") else [],
-            "interactive_data": {
-                "residuals": residuals.tolist(),
-                "residual_bins": residual_bins,
-                "residual_counts": residual_counts,
-                "y_test": y_test.tolist(),
-                "preds": y_pred.tolist(),
-            },
-            "variable_distributions": variable_distributions,
-            "cama_preview": cama_preview,
-            "plots": wrapped_plots,
-            "downloads": wrapped_downloads,
-            "is_db_mode": is_db_mode,
-            "isRunMode": False,
-            "record_count": int(len(df_model)),
-        }
-
-    except Exception as e:
-        import traceback
-        print(f"❌ RF TRAIN ERROR: {e}")
-        traceback.print_exc()
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    asyncio.create_task(producer())
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": "true",
+        },
+    )

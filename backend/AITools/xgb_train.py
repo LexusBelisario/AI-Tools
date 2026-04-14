@@ -60,312 +60,229 @@ async def train_xgb_model(
     scaler_choice: str = Form("None"),
     excluded_indices: Optional[str] = Form("[]"),
 ):
+    import asyncio
+    from fastapi.responses import StreamingResponse
 
-    try:
-        file_gdf = None
-        is_db_mode = False
+    queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_event_loop()
 
-        # 1️⃣ Load data (SAME AS LR)
-        if schema and schema.strip() and table_name and table_name.strip():
-            is_db_mode = True
-            print(f"✅ XGB DB mode: schema={schema}, table={table_name}")
-            df_full = df_from_db(schema.strip(), table_name.strip())
-        else:
-            print(f"✅ XGB File mode detected")
-            gdf = gdf_from_zip_or_parts(shapefiles=shapefiles, zip_file=zip_file)
-            file_gdf = gdf.copy()
-            df_full = gdf.drop(columns=[c for c in gdf.columns if c.lower() in GEOM_NAMES])
+    def emit(msg: str):
+        import json as _json
+        loop.call_soon_threadsafe(queue.put_nowait, f"event: progress\ndata: {_json.dumps(msg)}\n\n")
 
-        if df_full.empty:
-            return JSONResponse(status_code=400, content={"error": "No data loaded."})
-
-        total_rows_before = len(df_full)
-
-        # 2️⃣ Apply exclusions FIRST (SAME AS LR)
+    def run_training_sync():
         try:
-            excluded = json.loads(excluded_indices or "[]")
-            excluded_count = len(excluded)
-            if excluded_count:
-                print(f"🧹 Excluding {excluded_count} rows before training...")
-                df_full = df_full.drop(df_full.index[excluded]).reset_index(drop=True)
+            file_gdf = None
+            is_db_mode = False
+
+            if schema and schema.strip() and table_name and table_name.strip():
+                is_db_mode = True
+                emit("Loading data from database")
+                df_full = df_from_db(schema.strip(), table_name.strip())
             else:
-                print("✅ No excluded rows received.")
-        except Exception as e:
-            print(f"⚠️ Could not parse excluded_indices: {e}")
-            excluded_count = 0
+                emit("Loading shapefile")
+                gdf = gdf_from_zip_or_parts(shapefiles=shapefiles, zip_file=zip_file)
+                file_gdf = gdf.copy()
+                df_full = gdf.drop(columns=[c for c in gdf.columns if c.lower() in GEOM_NAMES])
 
-        # 🔒 CRITICAL: Store original indices AFTER exclusions (SAME AS LR)
-        df_full['__original_index__'] = df_full.index
-        print(f"🔍 Stored original indices for {len(df_full)} rows after exclusions")
+            if df_full.empty:
+                return {"error": "No data loaded."}
 
-        pin_series, pin_colname = extract_pin_column(df_full)
-        if pin_colname and pin_colname in df_full.columns:
-            df_full.drop(columns=[pin_colname], inplace=True)
-            print(f"   🔧 Removed PIN column '{pin_colname}'")
+            emit("Dropping excluded rows and NaN values")
+            try:
+                excluded = json.loads(excluded_indices or "[]")
+                if excluded:
+                    df_full = df_full.drop(df_full.index[excluded]).reset_index(drop=True)
+            except Exception:
+                pass
 
-        # 3️⃣ Parse fields
-        indep = json.loads(independent_vars) if isinstance(independent_vars, str) else independent_vars
-        target = dependent_var
+            df_full["__original_index__"] = df_full.index
+            pin_series, pin_colname = extract_pin_column(df_full)
+            if pin_colname and pin_colname in df_full.columns:
+                df_full.drop(columns=[pin_colname], inplace=True)
 
-        if target not in df_full.columns:
-            return JSONResponse(status_code=400, content={"error": f"'{target}' not found"})
+            indep = json.loads(independent_vars) if isinstance(independent_vars, str) else independent_vars
+            target = dependent_var
 
-        for col in indep:
-            if col not in df_full.columns:
-                return JSONResponse(status_code=400, content={"error": f"'{col}' not found"})
+            if target not in df_full.columns:
+                return {"error": f"'{target}' not found"}
+            for col in indep:
+                if col not in df_full.columns:
+                    return {"error": f"'{col}' not found"}
 
-        # 4️⃣ Convert numeric
-        for col in indep + [target]:
-            df_full[col] = df_full[col].map(safe_to_float)
+            for col in indep + [target]:
+                df_full[col] = df_full[col].map(safe_to_float)
 
-        # 5️⃣ Create working dataset (SAME AS LR)
-        df_model = df_full[indep + [target] + ['__original_index__']].copy()
-        before = len(df_model)
-        df_model = df_model.dropna(subset=indep + [target])
-        after = len(df_model)
-        print(f"📢 XGB dropped {before - after} rows with NaNs")
+            df_model = df_full[indep + [target] + ["__original_index__"]].copy()
+            df_model = df_model.dropna(subset=indep + [target])
 
-        if df_model.empty:
-            return JSONResponse(status_code=400, content={"error": "No valid rows"})
+            if df_model.empty:
+                return {"error": "No valid rows"}
 
-        print(f"📊 Final training dataset: {len(df_model)} rows")
+            emit("Splitting into 80/20 train and test sets")
+            X = df_model[indep].values
+            y = df_model[target].values
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        # 6️⃣ Prepare X, y
-        X = df_model[indep].values
-        y = df_model[target].values
+            emit("Fitting scaler on training data")
+            scaler = None
+            if scaler_choice == "Standard":
+                scaler = StandardScaler()
+            elif scaler_choice == "MinMax":
+                scaler = MinMaxScaler()
 
-        # 7️⃣ Train/test split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
+            if scaler is not None:
+                X_train_scaled = scaler.fit_transform(X_train)
+                X_test_scaled = scaler.transform(X_test)
+            else:
+                X_train_scaled = X_train
+                X_test_scaled = X_test
 
-        # 8️⃣ Scaling (XGB-SPECIFIC FEATURE)
-        scaler = None
-        if scaler_choice == "Standard":
-            scaler = StandardScaler()
-        elif scaler_choice == "MinMax":
-            scaler = MinMaxScaler()
-
-        if scaler is not None:
-            X_train_scaled = scaler.fit_transform(X_train)
-            X_test_scaled = scaler.transform(X_test)
-        else:
-            X_train_scaled = X_train
-            X_test_scaled = X_test
-
-        # 9️⃣ Train XGBoost (XGB-SPECIFIC COMPUTATION)
-        print("🚀 Training XGBoost model...")
-        model = XGBRegressor(
-            n_estimators=300,
-            learning_rate=0.05,
-            max_depth=6,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            random_state=42,
-            objective="reg:squarederror",
-        )
-        model.fit(X_train_scaled, y_train)
-
-        #Predictions
-        y_pred = model.predict(X_test_scaled)
-
-        #Prepare df_valid
-        df_valid = df_model.copy()
-
-        #Export
-        artifact_base = build_artifact_base_name("XGB", table_name or "")
-        export_path = os.path.join(EXPORT_DIR, artifact_base)
-        os.makedirs(export_path, exist_ok=True)
-        print(f"Creating export: {artifact_base}")
-
-        try:
-            metrics, png_paths, pdf_path = export_xgb_report_and_artifacts(
-                export_path=export_path,
-                model=model,
-                scaler=scaler,
-                feature_names=indep,
-                target=target,
-                X_train=X_train_scaled,
-                y_train=y_train,
-                X_test=X_test_scaled,
-                y_test=y_test,
-                y_pred=y_pred,
-                df_valid=df_valid,
-                scaler_choice=scaler_choice,
-                artifact_base=artifact_base,
+            emit("Fitting XGBRegressor model")
+            model = XGBRegressor(
+                n_estimators=300, learning_rate=0.05, max_depth=6,
+                subsample=0.8, colsample_bytree=0.8, random_state=42,
+                objective="reg:squarederror",
             )
-        except Exception as e:
-            import traceback
-            print(f"❌ XGB report generation failed: {e}")
-            print(traceback.format_exc())
-            raise
+            model.fit(X_train_scaled, y_train)
+            y_pred = model.predict(X_test_scaled)
 
-        plots = png_paths
+            emit("Computing R\u00b2, MSE, MAE, RMSE")
+            df_valid = df_model.copy()
+            artifact_base = build_artifact_base_name("XGB", table_name or "")
+            export_path = os.path.join(EXPORT_DIR, artifact_base)
+            os.makedirs(export_path, exist_ok=True)
 
-        # Save model
-        model_path = os.path.join(export_path, f"{artifact_base}.pkl")
-        try:
+            emit("Generating PDF report and plots")
+            metrics, png_paths, pdf_path = export_xgb_report_and_artifacts(
+                export_path=export_path, model=model, scaler=scaler,
+                feature_names=indep, target=target,
+                X_train=X_train_scaled, y_train=y_train,
+                X_test=X_test_scaled, y_test=y_test, y_pred=y_pred,
+                df_valid=df_valid, scaler_choice=scaler_choice, artifact_base=artifact_base,
+            )
+
+            emit("Saving model to .pkl file")
+            model_path = os.path.join(export_path, f"{artifact_base}.pkl")
             with open(model_path, "wb") as f:
                 pickle.dump(
-                    {
-                        "model": model,
-                        "scaler": scaler,
-                        "features": indep,
-                        "target": target,
-                        "model_type": "xgb",
-                        "trained_at": datetime.now(PHT).isoformat(),
-                    },
+                    {"model": model, "scaler": scaler, "features": indep, "target": target,
+                     "model_type": "xgb", "trained_at": datetime.now(PHT).isoformat()},
                     f,
                 )
-            print(f"Saved model: {os.path.basename(model_path)}")
-        except Exception as e:
-            print(f"❌ Failed to save XGB model: {e}")
-            raise
 
-        # Export CSV
-        preds_valid = model.predict(
-            scaler.transform(df_valid[indep]) if scaler else df_valid[indep].values
-        )
-        df_export = df_valid.copy()
-        if pin_series is not None:
+            emit("Writing predictions to CSV")
+            preds_valid = model.predict(scaler.transform(df_valid[indep]) if scaler else df_valid[indep].values)
+            df_export = df_valid.copy()
+            if pin_series is not None:
+                try:
+                    df_export["PIN"] = pin_series.iloc[df_export.index].values
+                except Exception:
+                    pass
+            df_export["prediction"] = preds_valid
+            csv_cols = (["PIN"] if "PIN" in df_export.columns else []) + indep + [target, "prediction"]
+            csv_path = os.path.join(export_path, f"{artifact_base}.csv")
+            df_export[csv_cols].to_csv(csv_path, index=False)
+
+            emit("Building predicted shapefile and ZIP")
+            zip_out = None
             try:
-                df_export["PIN"] = pin_series.iloc[df_export.index].values
+                original_indices = df_valid["__original_index__"].tolist() if "__original_index__" in df_valid.columns else df_valid.index.tolist()
+                if is_db_mode:
+                    gdf_db = gdf_from_db_with_geometry(schema, table_name)
+                    valid_gdf = gdf_db.iloc[original_indices].copy()
+                    if pin_series is not None:
+                        upsert_pin_field(valid_gdf, pin_series.iloc[original_indices].values)
+                    drop_duplicate_pin_fields(valid_gdf)
+                    valid_gdf[target] = df_valid[target].values
+                    valid_gdf["prediction"] = df_export["prediction"].values
+                elif file_gdf is not None:
+                    valid_gdf = file_gdf.iloc[original_indices].copy()
+                    if pin_series is not None:
+                        try:
+                            valid_gdf["PIN"] = pin_series.iloc[original_indices].values
+                        except Exception:
+                            pass
+                    valid_gdf[target] = df_valid[target].values
+                    valid_gdf["prediction"] = df_export["prediction"].values
+                else:
+                    raise ValueError("No geometry source available")
+
+                shp_pred_dir = os.path.join(export_path, "predicted_shapefile")
+                os.makedirs(shp_pred_dir, exist_ok=True)
+                valid_gdf = valid_gdf.drop(columns=["__original_index__"], errors="ignore")
+                valid_gdf.to_file(os.path.join(shp_pred_dir, "XGBoost_Predicted.shp"))
+                zip_out = os.path.join(export_path, "XGBoost_Predicted.zip")
+                with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
+                    for fname in os.listdir(shp_pred_dir):
+                        z.write(os.path.join(shp_pred_dir, fname), fname)
             except Exception as e:
-                print(f"⚠ PIN injection failed: {e}")
-        df_export["prediction"] = preds_valid
-        csv_cols = []
-        if "PIN" in df_export.columns:
-            csv_cols.append("PIN")
-        csv_cols.extend(indep)
-        csv_cols.extend([target, "prediction"])
-        csv_path = os.path.join(export_path, f"{artifact_base}.csv")
-        df_export[csv_cols].to_csv(csv_path, index=False)
-        print(f"Exported CSV: {csv_path}")
+                print(f"Shapefile export error: {e}")
 
-        # Export shapefile
-        zip_out = None
-        try:
-            original_indices = (
-                df_valid["__original_index__"].tolist()
-                if "__original_index__" in df_valid.columns
-                else df_valid.index.tolist()
+            residuals = y_test - y_pred
+            counts, bin_edges = np.histogram(residuals, bins=20)
+            variable_distributions = compute_variable_distributions(
+                pd.DataFrame(X_train_scaled if scaler else X_train, columns=indep), indep
             )
-            if is_db_mode:
-                gdf_db = gdf_from_db_with_geometry(schema, table_name)
-                valid_gdf = gdf_db.iloc[original_indices].copy()
-                if pin_series is not None:
-                    upsert_pin_field(valid_gdf, pin_series.iloc[original_indices].values)
-                drop_duplicate_pin_fields(valid_gdf)
-                valid_gdf[target] = df_valid[target].values
-                valid_gdf["prediction"] = df_export["prediction"].values
-            elif file_gdf is not None:
-                valid_gdf = file_gdf.iloc[original_indices].copy()
-                if pin_series is not None:
-                    try:
-                        valid_gdf["PIN"] = pin_series.iloc[original_indices].values
-                    except Exception as e:
-                        print(f"⚠️ Could not add PIN: {e}")
-                valid_gdf[target] = df_valid[target].values
-                valid_gdf["prediction"] = df_export["prediction"].values
-            else:
-                raise ValueError("No geometry source available")
 
-            shp_pred_dir = os.path.join(export_path, "predicted_shapefile")
-            os.makedirs(shp_pred_dir, exist_ok=True)
-            shp_pred_path = os.path.join(shp_pred_dir, "XGBoost_Predicted.shp")
-            valid_gdf = valid_gdf.drop(columns=["__original_index__"], errors="ignore")
-            valid_gdf.to_file(shp_pred_path)
-            zip_out = os.path.join(export_path, "XGBoost_Predicted.zip")
-            with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as z:
-                for fname in os.listdir(shp_pred_dir):
-                    z.write(os.path.join(shp_pred_dir, fname), fname)
+            preview_df = df_valid.copy()
+            preview_df["prediction"] = model.predict(scaler.transform(df_valid[indep]) if scaler else df_valid[indep].values)
+            if pin_series is not None:
+                try:
+                    preview_df["PIN"] = pin_series.iloc[preview_df.index].values
+                except Exception:
+                    pass
+            preview_cols = (["PIN"] if "PIN" in preview_df.columns else []) + indep + [target, "prediction"]
+            cama_preview = preview_df[preview_cols].head(100).to_dict("records")
+
+            base_url = "/api/ai-tools/download"
+            wrapped_plots = {k: (f"{base_url}?file={v}" if v else None) for k, v in png_paths.items()}
+            wrapped_downloads = {k: f"{base_url}?file={v}" for k, v in {"model": model_path, "report": pdf_path, "cama_csv": csv_path}.items() if v}
+            if zip_out:
+                wrapped_downloads["shapefile"] = f"{base_url}?file={zip_out}"
+                wrapped_downloads["geojson"] = f"/api/ai-tools/preview-geojson?file_path={zip_out}"
+
+            return {
+                "model_name": artifact_base, "model_id": artifact_base,
+                "message": "XGBoost training completed",
+                "dependent_var": target, "metrics": metrics, "features": indep,
+                "importance": [{"feature": f, "value": float(v)} for f, v in zip(indep, model.feature_importances_)] if hasattr(model, "feature_importances_") else [],
+                "interactive_data": {"residuals": residuals.tolist(), "residual_bins": bin_edges.tolist(), "residual_counts": counts.tolist(), "y_test": y_test.tolist(), "preds": y_pred.tolist()},
+                "variable_distributions": variable_distributions, "cama_preview": cama_preview,
+                "plots": wrapped_plots, "downloads": wrapped_downloads,
+                "is_db_mode": is_db_mode, "isRunMode": False, "record_count": int(len(df_model)),
+            }
+
         except Exception as e:
-            print(f"⚠️ Shapefile export error: {e}")
+            import traceback
+            print(f"❌ XGB TRAIN ERROR: {e}")
+            traceback.print_exc()
+            return {"error": str(e)}
 
-        downloads = {
-            "model":    model_path,
-            "report":   pdf_path,
-            "cama_csv": csv_path,
-            "shapefile": zip_out,
-        }
+    async def event_stream():
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
 
-        # Interactive data
-        residuals = y_test - y_pred
-        counts, bin_edges = np.histogram(residuals, bins=20)
-        
-        print("📊 Computing variable distributions...")
-        variable_distributions = compute_variable_distributions(
-            pd.DataFrame(X_train_scaled if scaler else X_train, columns=indep),
-            indep
-        )
-        
-        # Preview
-        print("📋 Creating preview...")
-        preview_df = df_valid.copy()
-        preds_valid = model.predict(
-            scaler.transform(df_valid[indep]) if scaler else df_valid[indep].values
-        )
-        preview_df["prediction"] = preds_valid
-        
-        preview_cols = []
-        if pin_series is not None:
-            try:
-                preview_df["PIN"] = pin_series.iloc[preview_df.index].values
-                preview_cols.append("PIN")
-            except:
-                pass
-        
-        preview_cols.extend(indep)
-        preview_cols.append(target)
-        preview_cols.append("prediction")
-        
-        cama_preview = preview_df[preview_cols].head(100).to_dict('records')
+    async def producer():
+        import asyncio, contextvars
+        ctx = contextvars.copy_context()
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, ctx.run, run_training_sync)
+        import json as _json
+        queue.put_nowait(f"event: result\ndata: {_json.dumps(result)}\n\n")
+        queue.put_nowait(None)
 
-        # URLs
-        base_url = "/api/ai-tools/download"
-        wrapped_plots = {
-            key: (f"{base_url}?file={path}" if path else None)
-            for key, path in plots.items()
-        }
-
-        wrapped_downloads = {
-            key: f"{base_url}?file={path}"
-            for key, path in downloads.items()
-            if path
-        }
-
-        if "shapefile" in downloads and downloads["shapefile"]:
-            wrapped_downloads["geojson"] = f"/api/ai-tools/preview-geojson?file_path={downloads['shapefile']}"
-
-        return {
-            "model_name": artifact_base,
-            "model_id": artifact_base,
-            "message": "XGBoost training completed",
-            "dependent_var": target,
-            "metrics": metrics,
-            "features": indep,
-            "importance": [
-                {"feature": feat, "value": float(val)}
-                for feat, val in zip(indep, model.feature_importances_)
-            ] if hasattr(model, "feature_importances_") else [],
-            "interactive_data": {
-                "residuals": residuals.tolist(),
-                "residual_bins": bin_edges.tolist(),
-                "residual_counts": counts.tolist(),
-                "y_test": y_test.tolist(),
-                "preds": y_pred.tolist(),
-            },
-            "variable_distributions": variable_distributions,
-            "cama_preview": cama_preview,
-            "plots": wrapped_plots,
-            "downloads": wrapped_downloads,
-            "is_db_mode": is_db_mode,
-            "isRunMode": False,
-            "record_count": int(len(df_model)),
-        }
-
-    except Exception as e:
-        import traceback
-        print(f"❌ XGB TRAIN ERROR: {e}")
-        traceback.print_exc()
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    asyncio.create_task(producer())
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": "true",
+        },
+    )

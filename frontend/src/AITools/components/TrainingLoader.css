@@ -62,3 +62,117 @@
   color: #94a3b8;
   font-family: "Plus Jakarta Sans", system-ui, sans-serif;
 }
+/* Multi-model layout */
+.tl-multi {
+  max-width: 480px;
+  width: 90%;
+  padding: 32px 28px 28px;
+}
+
+.tl-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.tl-top .training-spinner {
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.tl-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fbbf24;
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+}
+
+.tl-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tl-model-row {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 14px 16px 12px;
+  transition: border-color 0.3s;
+}
+
+.tl-model-row--done {
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.tl-model-row--failed {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.tl-model-row--running {
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.tl-model-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.tl-model-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tl-model-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+}
+
+.tl-model-badge--running {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.tl-model-badge--done {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.tl-model-badge--failed {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.tl-model-step {
+  font-size: 12.5px;
+  color: #94a3b8;
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  margin-bottom: 10px;
+  min-height: 18px;
+}
+
+.tl-model-progress-track {
+  height: 4px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.tl-model-progress-fill {
+  height: 100%;
+  background: #f59e0b;
+  border-radius: 999px;
+  transition: width 0.6s ease;
+}

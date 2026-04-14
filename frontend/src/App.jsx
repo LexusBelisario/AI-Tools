@@ -21,7 +21,7 @@ export default function App() {
   // "null" is included to allow local HTML file testing (file:// origin)
   const TRUSTED_ORIGINS = (
     import.meta.env.VITE_TRUSTED_ORIGINS ||
-    "http://localhost:5173,http://localhost:9000,https://cama-core-14282293226.asia-southeast1.run.app,http://35.194.255.28:8000,http://localhost:8000,null"
+    "http://localhost:5173,http://localhost:5174,http://localhost:9000,https://cama-core-14282293226.asia-southeast1.run.app,http://35.194.255.28:8000,http://localhost:8000,null"
   )
     .split(",")
     .map((o) => o.trim());
@@ -123,4 +123,4 @@ export default function App() {
       />
     </Routes>
   );
-} 
+}

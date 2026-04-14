@@ -48,8 +48,14 @@ export default function AIToolsModal({
   const [trainErrors, setTrainErrors] = useState({});
   const [activeModelTab, setActiveModelTab] = useState(null);
   const [training, setTraining] = useState(false);
+  const [showResultsOverlay, setShowResultsOverlay] = useState(false);
+  const [pendingResults, setPendingResults] = useState({ lr: null, rf: null, xgb: null });
+  const [pendingSelected, setPendingSelected] = useState([]);
+  const [modelStatuses, setModelStatuses] = useState({});
   const [loadingMap, setLoadingMap] = useState(false);
   const [loadingFieldName, setLoadingFieldName] = useState("");
+  const [savingModels, setSavingModels] = useState({});
+  const [savedModels, setSavedModels] = useState([]);
 
   const decodeJwtPayload = (tok) => {
     try {
@@ -106,8 +112,6 @@ export default function AIToolsModal({
 
     setCommonBusy(true);
     setCommonError("");
-
-    console.log("🔄 Connecting with schema:", externalSchema);
 
     try {
       // When tokenOnly is true, skip the stale X-Target-Schema / X-Target-DB
@@ -210,12 +214,46 @@ export default function AIToolsModal({
 
       if (data.tables && data.tables.length > 0) {
         setAvailableTables(data.tables);
+        // Auto-select Training_Table and immediately load its fields
+        await loadTableFieldsForTable("Training_Table", userSchema);
       } else {
         setAvailableTables([]);
         alert("No Training_Table found in this schema.");
       }
     } catch (err) {
       alert(`Failed to load tables: ${err.message}`);
+    }
+  };
+
+  const loadTableFieldsForTable = async (tableName, schema) => {
+    if (!tableName || !schema) return;
+
+    try {
+      const fd = new FormData();
+      fd.append("schema", schema);
+      fd.append("table_name", tableName);
+
+      const res = await authFetch(`${API}/ai-tools/fields-db`, {
+        method: "POST",
+        body: fd,
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        alert(`Server error: ${res.status} - ${errorText}`);
+        return;
+      }
+
+      const data = await res.json();
+
+      if (data.fields) {
+        setSelectedTable(tableName);
+        setFields(data.fields);
+      } else {
+        alert("No fields found in the table.");
+      }
+    } catch (err) {
+      alert(`Failed to load fields: ${err.message}`);
     }
   };
 
@@ -269,7 +307,7 @@ export default function AIToolsModal({
     }
 
     setTraining(true);
-    setActiveTab("results");
+    setModelStatuses(Object.fromEntries(selected.map((m) => [m, 'running'])));
 
     try {
       const fdBase = new FormData();
@@ -309,12 +347,53 @@ export default function AIToolsModal({
               if (errBody) detail = errBody;
             }
             trainErrors[m] = detail;
-            throw new Error(detail);
+            setModelStatuses((p) => ({ ...p, [m]: "failed" }));
+            return;
           }
 
-          newResults[m] = await res.json();
+          // SSE stream reader
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          outer: while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            let boundary;
+            while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+              const chunk = buffer.slice(0, boundary);
+              buffer = buffer.slice(boundary + 2);
+
+              let eventType = "message";
+              let data = "";
+              for (const line of chunk.split("\n")) {
+                if (line.startsWith("event:")) eventType = line.slice(6).trim();
+                else if (line.startsWith("data:")) data = line.slice(5).trim();
+              }
+              if (!data) continue;
+
+              if (eventType === "progress") {
+                try { setModelStatuses((p) => ({ ...p, [m]: JSON.parse(data) })); } catch {}
+              } else if (eventType === "result") {
+                try {
+                  const result = JSON.parse(data);
+                  if (result.error) {
+                    trainErrors[m] = result.error;
+                    setModelStatuses((p) => ({ ...p, [m]: "failed" }));
+                  } else {
+                    newResults[m] = result;
+                    setModelStatuses((p) => ({ ...p, [m]: "done" }));
+                  }
+                } catch {}
+                break outer;
+              }
+            }
+          }
         } catch (err) {
           if (!trainErrors[m]) trainErrors[m] = err.message;
+          setModelStatuses((p) => ({ ...p, [m]: "failed" }));
           console.error(`Error training ${m}:`, err);
         }
       });
@@ -323,20 +402,18 @@ export default function AIToolsModal({
 
       setResults(newResults);
       setTrainErrors(trainErrors);
+      setPendingResults(newResults);
+      setPendingSelected(selected);
 
       const first = selected.find((m) => newResults[m]);
       if (first) {
         setActiveModelTab(first);
       } else {
-        // All failed — show first error tab
         const firstFailed = selected.find((m) => trainErrors[m]);
         if (firstFailed) setActiveModelTab(`${firstFailed}_err`);
       }
 
-      console.log(
-        "🔄 Auto-saving training results to Common Table Database...",
-      );
-      await autoSaveToCommonDB(newResults, selected);
+      setShowResultsOverlay(true);
 
       // Notify parent window that training is complete
       if (window.parent !== window) {
@@ -456,13 +533,31 @@ export default function AIToolsModal({
     }
   };
 
+  const handleSaveModel = async (modelType) => {
+    setSavingModels((p) => ({ ...p, [modelType]: true }));
+    await autoSaveToCommonDB(pendingResults, [modelType]);
+    setSavedModels((prev) => [...new Set([...prev, modelType])]);
+    setSavingModels((p) => ({ ...p, [modelType]: false }));
+  };
+
+  const handleDiscardResults = () => {
+    setShowResultsOverlay(false);
+    setResults({ lr: null, rf: null, xgb: null });
+    setTrainErrors({});
+    setActiveModelTab(null);
+    setPendingResults({ lr: null, rf: null, xgb: null });
+    setPendingSelected([]);
+    setSavedModels([]);
+    setSavingModels({});
+  };
+
   const hasResults = !!(results.lr || results.rf || results.xgb);
 
   // --- Helper to reset all form/connection state ---
   const resetAllState = () => {
     setActiveTab("inputs");
     setCommonStatus({ connected: false, context: null });
-    setSelectedTable("");
+    setSelectedTable("Training_Table");
     setFields([]);
     setPreviewRows([]);
     setPreviewTotal(0);
@@ -484,47 +579,25 @@ export default function AIToolsModal({
   }, [userSchema]);
 
   useEffect(() => {
-    if (selectedTable && userSchema) {
-      loadTableFields();
-    }
-  }, [selectedTable]);
-
-  useEffect(() => {
     if (selectedTable && (dependentVar || independentVars.length > 0)) {
       loadDatabasePreview(1);
+    } else {
+      setPreviewRows([]);
+      setPreviewTotal(0);
+      setPreviewPage(1);
     }
   }, [dependentVar, independentVars, selectedTable]);
 
-  // FIX: When token changes while modal is already open, reset stale
-  // commonStatus BEFORE reconnecting. Without this, authFetch sends the
-  // old userSchema in X-Target-Schema which overrides the new token's
-  // claims on the backend, causing the "stuck on old LGU" bug.
   useEffect(() => {
     if (!isOpen) {
       resetAllState();
       return;
     }
-
     if (token) {
-      // Clear stale connection context so the UI resets for the new LGU.
       resetAllState();
-      // Use tokenOnly so the connect call does NOT send stale
-      // X-Target-Schema / X-Target-DB from the previous render.
       connectCommon({ tokenOnly: true });
     }
   }, [isOpen, token]);
-
-  useEffect(() => {
-    setSelectedTable("");
-    setFields([]);
-    setPreviewRows([]);
-    setPreviewTotal(0);
-    setDependentVar("");
-    setIndependentVars([]);
-    setExcludedIndices([]);
-    setResults({ lr: null, rf: null, xgb: null });
-    setActiveModelTab(null);
-  }, [userSchema]);
 
   // NOTE: Moved above the early return so React hooks are always called
   // in the same order (hooks must not be conditional / after early returns).
@@ -555,16 +628,13 @@ export default function AIToolsModal({
   return (
     <div className="blgf-ai-root">
       <div className="blgf-ai-panel">
-        <TrainingLoader isTraining={training} />
+        <TrainingLoader isTraining={training} selectedModels={Object.keys(modelChecks).filter((m) => modelChecks[m])} modelStatuses={modelStatuses} />
 
         <div className="blgf-ai-header">
           <div>
             <div className="blgf-ai-title">AI Tools</div>
             <div className="blgf-ai-subtitle">
               Train models and explore outputs
-              {userSchema && (
-                <span className="blgf-ai-schema-tag">{userSchema}</span>
-              )}
             </div>
           </div>
 
@@ -573,77 +643,12 @@ export default function AIToolsModal({
           </button>
         </div>
 
-        <div className="blgf-ai-block" style={{ marginTop: 12 }}>
-          <div className="blgf-ai-label">Common Table Connection</div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.8 }}>
-              {commonStatus?.connected
-                ? `Connected: ${commonStatus?.context?.db}.${commonStatus?.context?.schema}`
-                : "Not connected"}
-            </div>
-
-            <div
-              style={{
-                marginLeft: "auto",
-                display: "flex",
-                gap: 10,
-                alignItems: "center",
-              }}
-            >
-              {commonStatus?.connected ? (
-                <button
-                  className="blgf-ai-btn-secondary"
-                  disabled={commonBusy}
-                  onClick={disconnectCommon}
-                >
-                  Disconnect
-                </button>
-              ) : (
-                <button
-                  className="blgf-ai-btn-primary"
-                  disabled={commonBusy || !token}
-                  onClick={connectCommon}
-                >
-                  {commonBusy ? "Connecting..." : "Connect"}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {commonError && (
-            <div className="blgf-ai-helper-text error" style={{ marginTop: 8 }}>
-              {commonError}
-            </div>
-          )}
-        </div>
-
         <div className="blgf-ai-tabs">
           <div
             className={`blgf-ai-tab ${activeTab === "inputs" ? "active" : ""}`}
             onClick={() => setActiveTab("inputs")}
           >
             Train
-          </div>
-
-          <div
-            className={`blgf-ai-tab ${activeTab === "results" ? "active" : ""} ${
-              !hasResults ? "disabled" : ""
-            }`}
-            onClick={() => {
-              if (hasResults) {
-                setActiveTab("results");
-              }
-            }}
-          >
-            Results
           </div>
 
           <div
@@ -682,19 +687,58 @@ export default function AIToolsModal({
           />
         )}
 
-        {activeTab === "results" && (
-          <ResultsTabUI
-            results={results}
-            trainErrors={trainErrors}
-            activeModelTab={activeModelTab}
-            setActiveModelTab={setActiveModelTab}
-            onShowMap={onShowMap}
-            setLoadingMap={setLoadingMap}
-            setLoadingFieldName={setLoadingFieldName}
-            setSaveModalOpen={setSaveModalOpen}
-            setSaveConfig={setSaveConfig}
-            userSchema={userSchema}
-          />
+        {/* Results Overlay */}
+        {showResultsOverlay && (
+          <div className="blgf-ai-overlay-backdrop">
+            <div className="blgf-ai-overlay-panel">
+              <div className="blgf-ai-overlay-header">
+                <div className="blgf-ai-overlay-title">Training Results</div>
+                <div className="blgf-ai-overlay-actions">
+                  <button
+                    className="blgf-ai-btn-discard"
+                    onClick={handleDiscardResults}
+                  >
+                    Discard
+                  </button>
+                  {pendingSelected.map((m) => {
+                    const isSaving = !!savingModels[m];
+                    const isSaved = savedModels.includes(m);
+                    const label = { lr: "Linear Regression", rf: "Random Forest", xgb: "XGBoost" }[m];
+                    return (
+                      <button
+                        key={m}
+                        className={`blgf-ai-btn-save${isSaved ? " blgf-ai-btn-saved" : isSaving ? " blgf-ai-btn-saving" : ""}`}
+                        onClick={!isSaving && !isSaved ? () => handleSaveModel(m) : undefined}
+                        disabled={isSaving || isSaved}
+                      >
+                        {isSaving ? (
+                          <><span className="blgf-ai-btn-spinner" /> Saving {label}...</>
+                        ) : isSaved ? (
+                          `✓ ${label} Saved`
+                        ) : (
+                          `Save ${label}`
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="blgf-ai-overlay-body">
+                <ResultsTabUI
+                  results={results}
+                  trainErrors={trainErrors}
+                  activeModelTab={activeModelTab}
+                  setActiveModelTab={setActiveModelTab}
+                  onShowMap={onShowMap}
+                  setLoadingMap={setLoadingMap}
+                  setLoadingFieldName={setLoadingFieldName}
+                  setSaveModalOpen={setSaveModalOpen}
+                  setSaveConfig={setSaveConfig}
+                  userSchema={userSchema}
+                />
+              </div>
+            </div>
+          </div>
         )}
 
         {activeTab === "run-saved" && (

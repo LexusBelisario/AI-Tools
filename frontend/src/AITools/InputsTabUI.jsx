@@ -154,12 +154,33 @@ export default function InputsTabUI({
   toggleExcludedRow,
   handleTrain,
   training,
-  userSchema,
-  availableTables,
-  selectedTable,
-  setSelectedTable,
   loadDatabasePreview,
 }) {
+  const [depSearch, setDepSearch] = useState("");
+  const [depSort, setDepSort] = useState("asc");
+  const [indepSearch, setIndepSearch] = useState("");
+  const [indepSort, setIndepSort] = useState("asc");
+
+  const filteredDepFields = useMemo(() => {
+    let result = fields.filter((f) =>
+      f.toLowerCase().includes(depSearch.toLowerCase())
+    );
+    result = [...result].sort((a, b) =>
+      depSort === "asc" ? a.localeCompare(b) : b.localeCompare(a)
+    );
+    return result;
+  }, [fields, depSearch, depSort]);
+
+  const filteredIndepFields = useMemo(() => {
+    let result = fields.filter((f) =>
+      f.toLowerCase().includes(indepSearch.toLowerCase())
+    );
+    result = [...result].sort((a, b) =>
+      indepSort === "asc" ? a.localeCompare(b) : b.localeCompare(a)
+    );
+    return result;
+  }, [fields, indepSearch, indepSort]);
+
   return (
     <div className="blgf-ai-content">
       <div className="blgf-ai-block">
@@ -213,66 +234,125 @@ export default function InputsTabUI({
       </div>
 
       <div className="blgf-ai-data-grid">
+        {/* --- Dependent Variable --- */}
         <div className="blgf-ai-col-left">
           <div className="blgf-ai-block">
-            <div className="blgf-ai-label">Select Training Table</div>
-            <select
-              value={selectedTable}
-              onChange={(e) => setSelectedTable(e.target.value)}
-              className="blgf-ai-select"
-              disabled={availableTables.length === 0}
-            >
-              <option value="">Select a table</option>
-              {availableTables.map((table) => (
-                <option key={table} value={table}>
-                  {table}
-                </option>
+            <div className="blgf-ai-label">Dependent Variable (Target)</div>
+
+            {/* Search + Sort toolbar */}
+            <div className="blgf-ai-field-toolbar">
+              <input
+                className="blgf-ai-field-search"
+                type="text"
+                placeholder="Search fields…"
+                value={depSearch}
+                onChange={(e) => setDepSearch(e.target.value)}
+                disabled={!fields.length}
+              />
+              <button
+                className="blgf-ai-sort-btn"
+                title={depSort === "asc" ? "A → Z" : "Z → A"}
+                onClick={() => setDepSort((s) => (s === "asc" ? "desc" : "asc"))}
+                disabled={!fields.length}
+              >
+                {depSort === "asc" ? "A↑" : "Z↓"}
+              </button>
+            </div>
+
+            {/* Scrollable list acting as the selector */}
+            <div className="blgf-ai-dep-list">
+              {fields.length === 0 && (
+                <div className="blgf-ai-empty-list">Loading fields…</div>
+              )}
+              {fields.length > 0 && filteredDepFields.length === 0 && (
+                <div className="blgf-ai-empty-list">No match found</div>
+              )}
+              {filteredDepFields.map((f) => (
+                <div
+                  key={f}
+                  className={`blgf-ai-dep-item ${dependentVar === f ? "selected" : ""}`}
+                  onClick={() => setDependentVar(dependentVar === f ? "" : f)}
+                >
+                  <span className="blgf-ai-dep-radio">
+                    {dependentVar === f ? "●" : "○"}
+                  </span>
+                  <span>{f}</span>
+                </div>
               ))}
-            </select>
-            {availableTables.length === 0 && (
-              <div className="blgf-ai-helper-text error">
-                No tables found in schema {userSchema}
+            </div>
+
+            {dependentVar && (
+              <div className="blgf-ai-selected-tag">
+                ✓ <strong>{dependentVar}</strong>
               </div>
             )}
           </div>
-
-          <div className="blgf-ai-block">
-            <div className="blgf-ai-label">Dependent Variable (Target)</div>
-            <select
-              value={dependentVar}
-              onChange={(e) => setDependentVar(e.target.value)}
-              className="blgf-ai-select"
-              disabled={!fields.length}
-            >
-              <option value="">Select target</option>
-              {fields.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
+        {/* --- Independent Variables --- */}
         <div className="blgf-ai-col-right">
           <div className="blgf-ai-block full-height">
             <div className="blgf-ai-label">
               Independent Variables (Features)
+              {independentVars.length > 0 && (
+                <span className="blgf-ai-count-badge">{independentVars.length} selected</span>
+              )}
             </div>
+
+            {/* Search + Sort + Select-all toolbar */}
+            <div className="blgf-ai-field-toolbar">
+              <input
+                className="blgf-ai-field-search"
+                type="text"
+                placeholder="Search fields…"
+                value={indepSearch}
+                onChange={(e) => setIndepSearch(e.target.value)}
+                disabled={!fields.length}
+              />
+              <button
+                className="blgf-ai-sort-btn"
+                title={indepSort === "asc" ? "A → Z" : "Z → A"}
+                onClick={() => setIndepSort((s) => (s === "asc" ? "desc" : "asc"))}
+                disabled={!fields.length}
+              >
+                {indepSort === "asc" ? "A↑" : "Z↓"}
+              </button>
+              <button
+                className="blgf-ai-sort-btn"
+                title="Select all visible"
+                onClick={() => {
+                  const visible = filteredIndepFields;
+                  const allChecked = visible.every((f) => independentVars.includes(f));
+                  if (allChecked) {
+                    setIndependentVars((p) => p.filter((x) => !visible.includes(x)));
+                  } else {
+                    setIndependentVars((p) => [...new Set([...p, ...visible])]);
+                  }
+                }}
+                disabled={!fields.length}
+              >
+                {filteredIndepFields.length > 0 &&
+                filteredIndepFields.every((f) => independentVars.includes(f))
+                  ? "−All"
+                  : "+All"}
+              </button>
+            </div>
+
             <div className="blgf-ai-list">
               {fields.length === 0 && (
-                <div className="blgf-ai-empty-list">
-                  Select a table to load fields
-                </div>
+                <div className="blgf-ai-empty-list">Loading fields…</div>
               )}
-              {fields.map((f) => (
+              {fields.length > 0 && filteredIndepFields.length === 0 && (
+                <div className="blgf-ai-empty-list">No match found</div>
+              )}
+              {filteredIndepFields.map((f) => (
                 <label key={f} className="blgf-ai-checkbox">
                   <input
                     type="checkbox"
                     checked={independentVars.includes(f)}
                     onChange={() =>
                       setIndependentVars((p) =>
-                        p.includes(f) ? p.filter((x) => x !== f) : [...p, f],
+                        p.includes(f) ? p.filter((x) => x !== f) : [...p, f]
                       )
                     }
                   />
