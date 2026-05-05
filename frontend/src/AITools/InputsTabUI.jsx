@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 
-// --- Attribute Preview Table (used only by InputsTabUI) ---
+// --- Attribute Preview Table ---
 
 function AttributePreviewTable({
   previewRows,
@@ -19,24 +19,17 @@ function AttributePreviewTable({
 
   const sortedRows = useMemo(() => {
     if (!sortConfig.key || displayColumns.length === 0) return previewRows;
-
     return [...previewRows].sort((a, b) => {
       const aVal = parseFloat(a[sortConfig.key]) || 0;
       const bVal = parseFloat(b[sortConfig.key]) || 0;
-
-      if (sortConfig.direction === "asc") {
-        return aVal - bVal;
-      } else {
-        return bVal - aVal;
-      }
+      return sortConfig.direction === "asc" ? aVal - bVal : bVal - aVal;
     });
   }, [previewRows, sortConfig, displayColumns]);
 
   const handleSort = (column) => {
     setSortConfig((prev) => ({
       key: column,
-      direction:
-        prev.key === column && prev.direction === "desc" ? "asc" : "desc",
+      direction: prev.key === column && prev.direction === "desc" ? "asc" : "desc",
     }));
   };
 
@@ -60,9 +53,7 @@ function AttributePreviewTable({
     );
   }
 
-  const availableColumns = displayColumns.filter((col) =>
-    sortedRows[0].hasOwnProperty(col),
-  );
+  const availableColumns = displayColumns.filter((col) => sortedRows[0].hasOwnProperty(col));
 
   if (availableColumns.length === 0) {
     return (
@@ -83,13 +74,7 @@ function AttributePreviewTable({
             {availableColumns.map((col) => (
               <th
                 key={col}
-                className={`sortable ${
-                  sortConfig.key === col
-                    ? sortConfig.direction === "asc"
-                      ? "sorted-asc"
-                      : "sorted-desc"
-                    : ""
-                }`}
+                className={`sortable ${sortConfig.key === col ? (sortConfig.direction === "asc" ? "sorted-asc" : "sorted-desc") : ""}`}
                 onClick={() => handleSort(col)}
                 style={{ cursor: "pointer", userSelect: "none" }}
               >
@@ -103,28 +88,17 @@ function AttributePreviewTable({
             ))}
           </tr>
         </thead>
-
         <tbody>
           {sortedRows.map((row, idx) => {
             const globalIdx = (previewPage - 1) * PAGE_SIZE + idx;
             const isExcluded = excludedIndices.includes(globalIdx);
-
             return (
               <tr key={idx} className={isExcluded ? "excluded" : ""}>
                 <td>
-                  <input
-                    type="checkbox"
-                    checked={!isExcluded}
-                    onChange={() => toggleExcludedRow(globalIdx)}
-                  />
+                  <input type="checkbox" checked={!isExcluded} onChange={() => toggleExcludedRow(globalIdx)} />
                 </td>
-
                 {availableColumns.map((col) => (
-                  <td key={col}>
-                    {row[col] !== undefined && row[col] !== null
-                      ? String(row[col])
-                      : "-"}
-                  </td>
+                  <td key={col}>{row[col] !== undefined && row[col] !== null ? String(row[col]) : "-"}</td>
                 ))}
               </tr>
             );
@@ -135,7 +109,30 @@ function AttributePreviewTable({
   );
 }
 
-// --- Inputs Tab (Train) ---
+// --- Model Card ---
+
+function ModelCard({ label, description, checked, onChange, accent, disabled }) {
+  return (
+    <div
+      className={`blgf-ai-model-card ${checked ? "active" : ""} ${disabled ? "disabled" : ""}`}
+      onClick={disabled ? undefined : onChange}
+      style={{
+        ...(checked && accent ? { borderColor: accent, boxShadow: `0 0 0 2px ${accent}22` } : {}),
+        ...(disabled ? { opacity: 0.4, cursor: "not-allowed", pointerEvents: "none" } : {}),
+      }}
+    >
+      <div className="blgf-ai-model-card-header">
+        <span className="blgf-ai-model-name">{label}</span>
+        <div className="blgf-ai-checkbox-indicator" style={checked && accent ? { background: accent, color: "#fff" } : {}}>
+          {checked && "✓"}
+        </div>
+      </div>
+      <div className="blgf-ai-model-desc">{description}</div>
+    </div>
+  );
+}
+
+// --- Inputs Tab ---
 
 export default function InputsTabUI({
   fields,
@@ -160,55 +157,81 @@ export default function InputsTabUI({
   setSelectedTable,
   loadDatabasePreview,
 }) {
+
+  const toggleModel = (key) => {
+    if (key === "hybrid") {
+      const next = !modelChecks.hybrid;
+      // When enabling hybrid: uncheck all other models; when disabling: just uncheck hybrid
+      setModelChecks((p) => ({
+        lr:     next ? false : p.lr,
+        rf:     next ? false : p.rf,
+        xgb:    next ? false : p.xgb,
+        slm:    next ? false : p.slm,
+        hybrid: next,
+      }));
+    } else {
+      // Cannot toggle other models while hybrid is selected
+      if (modelChecks.hybrid) return;
+      setModelChecks((p) => ({ ...p, [key]: !p[key] }));
+    }
+  };
+
+  const hybridActive = modelChecks.hybrid;
+
   return (
     <div className="blgf-ai-content">
       <div className="blgf-ai-block">
         <div className="blgf-ai-label">Select Models</div>
+
+        {/* --- AI Tools --- */}
+        <div className="blgf-ai-model-group-label">AI Models</div>
         <div className="blgf-ai-models-grid">
-          <div
-            className={`blgf-ai-model-card ${modelChecks.lr ? "active" : ""}`}
-            onClick={() => setModelChecks((p) => ({ ...p, lr: !p.lr }))}
-          >
-            <div className="blgf-ai-model-card-header">
-              <span className="blgf-ai-model-name">Linear Regression</span>
-              <div className="blgf-ai-checkbox-indicator">
-                {modelChecks.lr && "✓"}
-              </div>
-            </div>
-            <div className="blgf-ai-model-desc">
-              Base statistical model for continuous target prediction.
-            </div>
-          </div>
+          <ModelCard
+            label="Linear Regression"
+            description="Base statistical model for continuous target prediction."
+            checked={modelChecks.lr}
+            onChange={() => toggleModel("lr")}
+            disabled={hybridActive}
+          />
+          <ModelCard
+            label="Random Forest"
+            description="Ensemble learning method using multiple decision trees."
+            checked={modelChecks.rf}
+            onChange={() => toggleModel("rf")}
+            disabled={hybridActive}
+          />
+          <ModelCard
+            label="XGBoost"
+            description="Gradient boosting framework for high performance."
+            checked={modelChecks.xgb}
+            onChange={() => toggleModel("xgb")}
+            disabled={hybridActive}
+          />
+        </div>
 
-          <div
-            className={`blgf-ai-model-card ${modelChecks.rf ? "active" : ""}`}
-            onClick={() => setModelChecks((p) => ({ ...p, rf: !p.rf }))}
-          >
-            <div className="blgf-ai-model-card-header">
-              <span className="blgf-ai-model-name">Random Forest</span>
-              <div className="blgf-ai-checkbox-indicator">
-                {modelChecks.rf && "✓"}
-              </div>
-            </div>
-            <div className="blgf-ai-model-desc">
-              Ensemble learning method using multiple decision trees.
-            </div>
-          </div>
+        {/* --- Geospatial Models --- */}
+        <div className="blgf-ai-model-group-label" style={{ marginTop: 16 }}>Spatial Models</div>
+        <div className="blgf-ai-models-grid">
+          <ModelCard
+            label="Spatial Lag Model"
+            description="Accounts for spatial autocorrelation using a spatially lagged dependent variable."
+            checked={modelChecks.slm}
+            onChange={() => toggleModel("slm")}
+            accent="#2563eb"
+            disabled={hybridActive}
+          />
+        </div>
 
-          <div
-            className={`blgf-ai-model-card ${modelChecks.xgb ? "active" : ""}`}
-            onClick={() => setModelChecks((p) => ({ ...p, xgb: !p.xgb }))}
-          >
-            <div className="blgf-ai-model-card-header">
-              <span className="blgf-ai-model-name">XGBoost</span>
-              <div className="blgf-ai-checkbox-indicator">
-                {modelChecks.xgb && "✓"}
-              </div>
-            </div>
-            <div className="blgf-ai-model-desc">
-              Gradient boosting framework for high performance.
-            </div>
-          </div>
+        {/* --- Hybrid Models --- */}
+        <div className="blgf-ai-model-group-label" style={{ marginTop: 16 }}>Hybrid Models</div>
+        <div className="blgf-ai-models-grid">
+          <ModelCard
+            label="Spatial Lag Model + Random Forest"
+            description="Two-stage model: SLM captures spatial structure, Random Forest corrects nonlinear residuals."
+            checked={modelChecks.hybrid}
+            onChange={() => toggleModel("hybrid")}
+            accent="#7c3aed"
+          />
         </div>
       </div>
 
@@ -224,9 +247,7 @@ export default function InputsTabUI({
             >
               <option value="">Select a table</option>
               {availableTables.map((table) => (
-                <option key={table} value={table}>
-                  {table}
-                </option>
+                <option key={table} value={table}>{table}</option>
               ))}
             </select>
             {availableTables.length === 0 && (
@@ -246,9 +267,7 @@ export default function InputsTabUI({
             >
               <option value="">Select target</option>
               {fields.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
+                <option key={f} value={f}>{f}</option>
               ))}
             </select>
           </div>
@@ -256,14 +275,10 @@ export default function InputsTabUI({
 
         <div className="blgf-ai-col-right">
           <div className="blgf-ai-block full-height">
-            <div className="blgf-ai-label">
-              Independent Variables (Features)
-            </div>
+            <div className="blgf-ai-label">Independent Variables (Features)</div>
             <div className="blgf-ai-list">
               {fields.length === 0 && (
-                <div className="blgf-ai-empty-list">
-                  Select a table to load fields
-                </div>
+                <div className="blgf-ai-empty-list">Select a table to load fields</div>
               )}
               {fields.map((f) => (
                 <label key={f} className="blgf-ai-checkbox">
@@ -288,19 +303,12 @@ export default function InputsTabUI({
         <div className="blgf-ai-preview-header">
           <div className="blgf-ai-label">Data Preview</div>
           <div className="blgf-ai-preview-actions">
-            <button
-              className="blgf-ai-btn-text"
-              onClick={() => setExcludedIndices([])}
-            >
+            <button className="blgf-ai-btn-text" onClick={() => setExcludedIndices([])}>
               Select All
             </button>
             <button
               className="blgf-ai-btn-text"
-              onClick={() =>
-                setExcludedIndices(
-                  Array.from({ length: previewTotal }, (_, i) => i),
-                )
-              }
+              onClick={() => setExcludedIndices(Array.from({ length: previewTotal }, (_, i) => i))}
             >
               Deselect All
             </button>
@@ -318,40 +326,18 @@ export default function InputsTabUI({
         />
 
         <div className="blgf-ai-pagination">
-          <button
-            onClick={() => {
-              if (previewPage > 1) {
-                loadDatabasePreview(previewPage - 1);
-              }
-            }}
-            disabled={previewPage <= 1}
-          >
+          <button onClick={() => { if (previewPage > 1) loadDatabasePreview(previewPage - 1); }} disabled={previewPage <= 1}>
             Previous
           </button>
-
-          <span>
-            Page {previewPage} / {Math.ceil(previewTotal / PAGE_SIZE) || 1}
-          </span>
-
-          <button
-            onClick={() => {
-              if (previewPage * PAGE_SIZE < previewTotal) {
-                loadDatabasePreview(previewPage + 1);
-              }
-            }}
-            disabled={previewPage * PAGE_SIZE >= previewTotal}
-          >
+          <span>Page {previewPage} / {Math.ceil(previewTotal / PAGE_SIZE) || 1}</span>
+          <button onClick={() => { if (previewPage * PAGE_SIZE < previewTotal) loadDatabasePreview(previewPage + 1); }} disabled={previewPage * PAGE_SIZE >= previewTotal}>
             Next
           </button>
         </div>
       </div>
 
       <div className="blgf-ai-footer">
-        <button
-          className="blgf-ai-btn-primary"
-          disabled={training}
-          onClick={handleTrain}
-        >
+        <button className="blgf-ai-btn-primary" disabled={training} onClick={handleTrain}>
           {training ? "Training in Progress..." : "Train Selected Models"}
         </button>
       </div>

@@ -47,6 +47,12 @@ def _normalize_blob_to_bytes(blob):
 
 
 def _load_from_blob(blob_bytes: bytes):
+    import zlib as _zlib
+    # Try decompressing first (blobs may be zlib-compressed)
+    try:
+        blob_bytes = _zlib.decompress(blob_bytes)
+    except _zlib.error:
+        pass  # Not compressed, use as-is
     # try joblib then pickle
     try:
         return joblib.load(io.BytesIO(blob_bytes))
@@ -363,14 +369,14 @@ async def run_saved_model(
             raise HTTPException(status_code=400, detail="Invalid model_source. Use 'upload' or 'db'")
         
         # Extract model components
-        model = model_bundle["model"]
-        scaler = model_bundle.get("scaler", None)
+        model_type = model_type or model_bundle.get("model_type", "unknown")
         features = [f.lower() for f in model_bundle.get("features", [])]
         target = model_bundle.get("dependent_var", None)
-        
-        if not model_type:
-            model_type = model_bundle.get("model_type", "unknown")
-        
+
+        # For hybrid/slm bundles, model key may not exist — handled separately below
+        model  = model_bundle.get("model", None)
+        scaler = model_bundle.get("scaler", None)
+
         print(f"   Model type: {model_type}")
         print(f"   Features: {features}")
         print(f"   Dependent: {target}")
@@ -412,7 +418,42 @@ async def run_saved_model(
         # ------------------------------------------------------
         # 3. Predict
         # ------------------------------------------------------
-        if scaler is not None:
+        if model_type in ("hybrid_slm_rf", "slm"):
+            # Rebuild spatial weights from geometry
+            print("🗺️ Rebuilding Queen contiguity spatial weights...")
+            try:
+                from libpysal.weights import Queen as QueenW
+                w_run = QueenW.from_dataframe(gdf, silence_warnings=True)
+                w_run.transform = "r"
+                print(f"   {w_run.n} units, avg {w_run.mean_neighbors:.2f} neighbors")
+            except Exception as we:
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": f"Failed to build spatial weights: {str(we)}"}
+                )
+
+            slm_model = model_bundle.get("slm")
+            if slm_model is None:
+                return JSONResponse(status_code=500, content={"error": "SLM model not found in bundle"})
+
+            y_arr = X.values[:, 0:1] * 0  # dummy y (zeros) — only need predy
+            X_arr = X.values.astype(np.float64)
+
+            from spreg import GM_Lag
+            slm_run = GM_Lag(y_arr, X_arr, w=w_run)
+            pred_slm = slm_run.predy.flatten()
+
+            if model_type == "hybrid_slm_rf":
+                rf_model = model_bundle.get("rf")
+                if rf_model is None:
+                    return JSONResponse(status_code=500, content={"error": "RF model not found in bundle"})
+                pred_rf_correction = rf_model.predict(X_arr)
+                preds = pred_slm + pred_rf_correction
+                print(f"   Hybrid predictions ready (SLM + RF correction)")
+            else:
+                preds = pred_slm
+                print(f"   SLM predictions ready")
+        elif scaler is not None:
             X_transformed = scaler.transform(X)
             preds = model.predict(X_transformed)
         else:

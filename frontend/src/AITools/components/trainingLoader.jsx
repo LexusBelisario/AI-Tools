@@ -26,6 +26,26 @@ const TRAINING_MESSAGES = {
     "Calculating feature gains...",
     "Minimizing loss function...",
   ],
+  slm: [
+    "Building spatial weights matrix...",
+    "Detecting Queen contiguity neighbors...",
+    "Row-standardizing weights...",
+    "Fitting Spatial Lag Model (GM_Lag)...",
+    "Estimating spatial lag coefficient ρ...",
+    "Computing Moran's I on residuals...",
+    "Generating spatial diagnostics...",
+  ],
+  hybrid: [
+    "Stage 1: Building spatial weights matrix...",
+    "Stage 1: Fitting Spatial Lag Model...",
+    "Stage 1: Extracting SLM residuals...",
+    "Stage 1: Computing Moran's I on residuals...",
+    "Stage 2: Training Random Forest on residuals...",
+    "Stage 2: Growing decision trees...",
+    "Stage 2: Computing RF corrections...",
+    "Combining SLM predictions + RF corrections...",
+    "Computing hybrid diagnostics...",
+  ],
   general: [
     "Loading training dataset...",
     "Preprocessing input features...",
@@ -52,6 +72,12 @@ export default function TrainingLoader({ isTraining, selectedModels = [] }) {
     }
     if (selectedModels.includes("xgb")) {
       allMessages.push(...TRAINING_MESSAGES.xgb);
+    }
+    if (selectedModels.includes("slm")) {
+      allMessages.push(...TRAINING_MESSAGES.slm);
+    }
+    if (selectedModels.includes("hybrid")) {
+      allMessages.push(...TRAINING_MESSAGES.hybrid);
     }
 
     return allMessages;

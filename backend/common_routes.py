@@ -445,7 +445,36 @@ async def auto_save_training_results(
             _ensure_ai_trained_models_table(db, schema)
 
             with open(model_path, "rb") as f:
-                model_blob = f.read()
+                raw_bytes = f.read()
+
+            # For SLM-based models, strip heavy internal data from GM_Lag object
+            # before saving to DB to avoid 1GB+ blob sizes
+            if model_type in ("slm", "hybrid_slm_rf"):
+                try:
+                    import io as _io
+                    import joblib as _joblib
+                    bundle = _joblib.load(_io.BytesIO(raw_bytes))
+                    if isinstance(bundle, dict) and "slm" in bundle:
+                        slm_obj = bundle["slm"]
+                        # Strip large internal arrays stored by GM_Lag
+                        for attr in ("y", "x", "z", "h", "yend", "q", "w_lags",
+                                     "predy_e", "e_pred", "u", "e_filtered", "vm"):
+                            if hasattr(slm_obj, attr):
+                                try:
+                                    setattr(slm_obj, attr, None)
+                                except Exception:
+                                    pass
+                        buf = _io.BytesIO()
+                        _joblib.dump(bundle, buf)
+                        model_blob = buf.getvalue()
+                        print(f"   ✅ Stripped SLM internals: {len(raw_bytes):,} → {len(model_blob):,} bytes")
+                    else:
+                        model_blob = raw_bytes
+                except Exception as strip_err:
+                    print(f"   ⚠️ Could not strip SLM internals: {strip_err}, using raw blob")
+                    model_blob = raw_bytes
+            else:
+                model_blob = raw_bytes
 
             try:
                 features = json.loads(features_json) if features_json else None
@@ -475,6 +504,9 @@ async def auto_save_training_results(
 
             model_name = os.path.splitext(os.path.basename(model_path))[0]
 
+            import zlib as _zlib
+            _orig_size = len(model_blob)
+            print(f"   ✅ Compressing blob: {_orig_size:,} bytes...")
             row = db.execute(
                 text(f'''
                     INSERT INTO "{schema}"."ai_trained_models"
@@ -494,7 +526,7 @@ async def auto_save_training_results(
                     "metrics": json.dumps(metrics) if metrics is not None else None,
                     "importance": json.dumps(importance) if importance is not None else None,
                     "t_tests": json.dumps(t_tests) if t_tests is not None else None,
-                    "model_blob": model_blob,
+                    "model_blob": __import__("psycopg2").Binary(__import__("zlib").compress(model_blob, 6)),
                     "meta": json.dumps(meta),
                 },
             ).fetchone()

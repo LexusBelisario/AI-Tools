@@ -37,12 +37,17 @@ export default function AIToolsModal({
     lr: false,
     rf: false,
     xgb: false,
+    slm: false,
+    hybrid: false,
   });
 
   const [results, setResults] = useState({
     lr: null,
     rf: null,
     xgb: null,
+    slm: null,
+    hybrid_slm: null,
+    hybrid: null,
   });
 
   const [trainErrors, setTrainErrors] = useState({});
@@ -110,8 +115,6 @@ export default function AIToolsModal({
     console.log("🔄 Connecting with schema:", externalSchema);
 
     try {
-      // When tokenOnly is true, skip the stale X-Target-Schema / X-Target-DB
-      // overrides and let the backend resolve context purely from the token.
       const headers = { Authorization: `Bearer ${token}` };
       if (!tokenOnly) {
         if (userSchema) headers["X-Target-Schema"] = userSchema;
@@ -279,7 +282,7 @@ export default function AIToolsModal({
       fdBase.append("independent_vars", JSON.stringify(independentVars));
       fdBase.append("excluded_indices", JSON.stringify(excludedIndices));
 
-      const newResults = { lr: null, rf: null, xgb: null };
+      const newResults = { lr: null, rf: null, xgb: null, slm: null, hybrid_slm: null, hybrid: null };
       const trainErrors = {};
 
       const calls = selected.map(async (m) => {
@@ -287,11 +290,11 @@ export default function AIToolsModal({
         for (const [key, val] of fdBase.entries()) fd.append(key, val);
 
         const endpoint =
-          m === "lr"
-            ? "/ai-tools/train-lr/train"
-            : m === "rf"
-              ? "/ai-tools/train-rf/train"
-              : "/ai-tools/train-xgb/train";
+          m === "lr"      ? "/ai-tools/train-lr/train"
+          : m === "rf"    ? "/ai-tools/train-rf/train"
+          : m === "slm"   ? "/ai-tools/train-slm/train"
+          : m === "hybrid" ? "/ai-tools/train-hybrid-slm-rf/train"
+          : "/ai-tools/train-xgb/train";
 
         try {
           const res = await authFetch(`${API}${endpoint}`, {
@@ -312,7 +315,13 @@ export default function AIToolsModal({
             throw new Error(detail);
           }
 
-          newResults[m] = await res.json();
+          const data = await res.json();
+          if (m === "hybrid") {
+            newResults["hybrid_slm"] = data.slm_stage;
+            newResults["hybrid"]     = data.hybrid_stage;
+          } else {
+            newResults[m] = data;
+          }
         } catch (err) {
           if (!trainErrors[m]) trainErrors[m] = err.message;
           console.error(`Error training ${m}:`, err);
@@ -324,21 +333,22 @@ export default function AIToolsModal({
       setResults(newResults);
       setTrainErrors(trainErrors);
 
-      const first = selected.find((m) => newResults[m]);
+      const expandedSelected = [];
+      for (const m of selected) {
+        if (m === "hybrid") { expandedSelected.push("hybrid_slm", "hybrid"); }
+        else { expandedSelected.push(m); }
+      }
+      const first = expandedSelected.find((m) => newResults[m]);
       if (first) {
         setActiveModelTab(first);
       } else {
-        // All failed — show first error tab
         const firstFailed = selected.find((m) => trainErrors[m]);
         if (firstFailed) setActiveModelTab(`${firstFailed}_err`);
       }
 
-      console.log(
-        "🔄 Auto-saving training results to Common Table Database...",
-      );
+      console.log("🔄 Auto-saving training results to Common Table Database...");
       await autoSaveToCommonDB(newResults, selected);
 
-      // Notify parent window that training is complete
       if (window.parent !== window) {
         const trainedModels = selected.filter((m) => newResults[m]);
         const failedModels = selected.filter((m) => !newResults[m]);
@@ -365,14 +375,13 @@ export default function AIToolsModal({
       console.error("Critical error during training sequence:", error);
       alert("An error occurred during the training process.");
 
-      // Notify parent even on critical failure
       if (window.parent !== window) {
         window.parent.postMessage(
           {
             type: "AI_TOOLS_TRAINING_COMPLETE",
             status: "error",
             models_trained: [],
-            failed_models: selected,
+            failed_models: Object.keys(modelChecks).filter((m) => modelChecks[m]),
             errors: { _critical: error.message },
             metrics: null,
             schema: userSchema,
@@ -389,14 +398,27 @@ export default function AIToolsModal({
   };
 
   const autoSaveToCommonDB = async (results, trainedModels) => {
-    for (const modelType of trainedModels) {
+    const expandedModels = [];
+    for (const m of trainedModels) {
+      if (m === "hybrid") {
+        if (results["hybrid_slm"]) expandedModels.push("hybrid_slm");
+        if (results["hybrid"])     expandedModels.push("hybrid");
+      } else {
+        expandedModels.push(m);
+      }
+    }
+
+    for (const modelType of expandedModels) {
       const result = results[modelType];
       if (!result) continue;
 
+      const backendModelType =
+        modelType === "hybrid_slm" ? "slm"
+        : modelType === "hybrid"   ? "hybrid_slm_rf"
+        : modelType;
+
       try {
-        console.log(
-          `📤 Auto-saving ${modelType.toUpperCase()} to Common DB...`,
-        );
+        console.log(`📤 Auto-saving ${modelType.toUpperCase()} to Common DB...`);
 
         const formData = new FormData();
 
@@ -411,41 +433,28 @@ export default function AIToolsModal({
           const shpPath =
             result.downloads.shapefile_raw ||
             (result.downloads.shapefile.includes("?file=")
-              ? decodeURIComponent(
-                  result.downloads.shapefile.split("?file=")[1],
-                )
+              ? decodeURIComponent(result.downloads.shapefile.split("?file=")[1])
               : result.downloads.shapefile);
           formData.append("shapefile_path", shpPath);
         }
 
-        formData.append("model_type", modelType);
+        formData.append("model_type", backendModelType);
         formData.append("model_version", result.model_version || 1);
-        formData.append(
-          "dependent_var",
-          result.dependent_var || result.original_dependent_var || "",
-        );
+        formData.append("dependent_var", result.dependent_var || result.original_dependent_var || "");
         formData.append("features_json", JSON.stringify(result.features || []));
         formData.append("metrics_json", JSON.stringify(result.metrics || {}));
         formData.append("importance_json", JSON.stringify(result.importance || []));
         formData.append("t_tests_json", JSON.stringify(result.t_test || null));
 
-        const response = await authFetch(
-          `${API}/common/auto-save-training-results`,
-          {
-            method: "POST",
-            headers: {
-              "X-Target-Schema": userSchema,
-            },
-            body: formData,
-          },
-        );
+        const response = await authFetch(`${API}/common/auto-save-training-results`, {
+          method: "POST",
+          headers: { "X-Target-Schema": userSchema },
+          body: formData,
+        });
 
         if (response.ok) {
           const data = await response.json();
-          console.log(
-            `✅ ${modelType.toUpperCase()} auto-saved to Common DB:`,
-            data,
-          );
+          console.log(`✅ ${modelType.toUpperCase()} auto-saved to Common DB:`, data);
         } else {
           const error = await response.text();
           console.warn(`⚠️ Failed to auto-save ${modelType}:`, error);
@@ -456,9 +465,8 @@ export default function AIToolsModal({
     }
   };
 
-  const hasResults = !!(results.lr || results.rf || results.xgb);
+  const hasResults = !!(results.lr || results.rf || results.xgb || results.slm || results.hybrid_slm || results.hybrid);
 
-  // --- Helper to reset all form/connection state ---
   const resetAllState = () => {
     setActiveTab("inputs");
     setCommonStatus({ connected: false, context: null });
@@ -469,7 +477,7 @@ export default function AIToolsModal({
     setDependentVar("");
     setIndependentVars([]);
     setExcludedIndices([]);
-    setResults({ lr: null, rf: null, xgb: null });
+    setResults({ lr: null, rf: null, xgb: null, slm: null, hybrid_slm: null, hybrid: null });
     setTrainErrors({});
     setActiveModelTab(null);
     setAvailableTables([]);
@@ -495,10 +503,6 @@ export default function AIToolsModal({
     }
   }, [dependentVar, independentVars, selectedTable]);
 
-  // FIX: When token changes while modal is already open, reset stale
-  // commonStatus BEFORE reconnecting. Without this, authFetch sends the
-  // old userSchema in X-Target-Schema which overrides the new token's
-  // claims on the backend, causing the "stuck on old LGU" bug.
   useEffect(() => {
     if (!isOpen) {
       resetAllState();
@@ -506,10 +510,7 @@ export default function AIToolsModal({
     }
 
     if (token) {
-      // Clear stale connection context so the UI resets for the new LGU.
       resetAllState();
-      // Use tokenOnly so the connect call does NOT send stale
-      // X-Target-Schema / X-Target-DB from the previous render.
       connectCommon({ tokenOnly: true });
     }
   }, [isOpen, token]);
@@ -522,24 +523,19 @@ export default function AIToolsModal({
     setDependentVar("");
     setIndependentVars([]);
     setExcludedIndices([]);
-    setResults({ lr: null, rf: null, xgb: null });
+    setResults({ lr: null, rf: null, xgb: null, slm: null, hybrid_slm: null, hybrid: null });
     setActiveModelTab(null);
   }, [userSchema]);
 
-  // NOTE: Moved above the early return so React hooks are always called
-  // in the same order (hooks must not be conditional / after early returns).
   useEffect(() => {
     if (shouldDisconnect) {
       console.log("🔌 Handling disconnect signal from parent");
-
       resetAllState();
       setCommonError("");
-
       console.log("✅ AI Tools state cleared");
     }
   }, [shouldDisconnect]);
 
-  // Switch tab based on openRunSaved flag from parent
   useEffect(() => {
     if (openRunSaved) {
       setActiveTab("run-saved");
@@ -550,12 +546,10 @@ export default function AIToolsModal({
 
   if (!isOpen) return null;
 
-  // --- Render ---
-
   return (
     <div className="blgf-ai-root">
       <div className="blgf-ai-panel">
-        <TrainingLoader isTraining={training} />
+        <TrainingLoader isTraining={training} selectedModels={Object.keys(modelChecks).filter(m => modelChecks[m])} />
 
         <div className="blgf-ai-header">
           <div>
@@ -576,42 +570,20 @@ export default function AIToolsModal({
         <div className="blgf-ai-block" style={{ marginTop: 12 }}>
           <div className="blgf-ai-label">Common Table Connection</div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ fontSize: 12, opacity: 0.8 }}>
               {commonStatus?.connected
                 ? `Connected: ${commonStatus?.context?.db}.${commonStatus?.context?.schema}`
                 : "Not connected"}
             </div>
 
-            <div
-              style={{
-                marginLeft: "auto",
-                display: "flex",
-                gap: 10,
-                alignItems: "center",
-              }}
-            >
+            <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
               {commonStatus?.connected ? (
-                <button
-                  className="blgf-ai-btn-secondary"
-                  disabled={commonBusy}
-                  onClick={disconnectCommon}
-                >
+                <button className="blgf-ai-btn-secondary" disabled={commonBusy} onClick={disconnectCommon}>
                   Disconnect
                 </button>
               ) : (
-                <button
-                  className="blgf-ai-btn-primary"
-                  disabled={commonBusy || !token}
-                  onClick={connectCommon}
-                >
+                <button className="blgf-ai-btn-primary" disabled={commonBusy || !token} onClick={connectCommon}>
                   {commonBusy ? "Connecting..." : "Connect"}
                 </button>
               )}
@@ -634,22 +606,14 @@ export default function AIToolsModal({
           </div>
 
           <div
-            className={`blgf-ai-tab ${activeTab === "results" ? "active" : ""} ${
-              !hasResults ? "disabled" : ""
-            }`}
-            onClick={() => {
-              if (hasResults) {
-                setActiveTab("results");
-              }
-            }}
+            className={`blgf-ai-tab ${activeTab === "results" ? "active" : ""} ${!hasResults ? "disabled" : ""}`}
+            onClick={() => { if (hasResults) setActiveTab("results"); }}
           >
             Results
           </div>
 
           <div
-            className={`blgf-ai-tab ${
-              activeTab === "run-saved" ? "active" : ""
-            }`}
+            className={`blgf-ai-tab ${activeTab === "run-saved" ? "active" : ""}`}
             onClick={() => setActiveTab("run-saved")}
           >
             Run Saved

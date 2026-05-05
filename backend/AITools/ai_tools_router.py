@@ -9,6 +9,8 @@ from AITools.ai_tools_models import router as models_router  # dagdag: models en
 from AITools.lr_train import router as lr_router
 from AITools.xgb_train import router as xgb_router
 from AITools.rf_train import router as rf_router
+from AITools.slm_train import router as slm_router
+from AITools.hybrid_slm_rf_train import router as hybrid_router
 
 # Main router for AI Tools
 router = APIRouter(prefix="/ai-tools")
@@ -16,9 +18,11 @@ router = APIRouter(prefix="/ai-tools")
 # ------------------------------------------------------------
 # Mount all AI tool submodules
 # ------------------------------------------------------------
-router.include_router(lr_router,  prefix="/train-lr")
-router.include_router(rf_router,  prefix="/train-rf")
-router.include_router(xgb_router, prefix="/train-xgb")
+router.include_router(lr_router,     prefix="/train-lr")
+router.include_router(rf_router,     prefix="/train-rf")
+router.include_router(xgb_router,    prefix="/train-xgb")
+router.include_router(slm_router,    prefix="/train-slm")
+router.include_router(hybrid_router, prefix="/train-hybrid-slm-rf")
 
 router.include_router(preview_router)      # /ai-tools/...
 router.include_router(run_model_router)    # /ai-tools/...
@@ -44,5 +48,7 @@ async def ai_tools_status():
             "train-lr",
             "train-rf",
             "train-xgb",
+            "train-slm",
+            "train-hybrid-slm-rf",
         ],
     }

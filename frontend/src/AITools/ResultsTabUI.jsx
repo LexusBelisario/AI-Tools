@@ -30,9 +30,15 @@ export default function ResultsTabUI({
   const hasLR = !!results.lr;
   const hasRF = !!results.rf;
   const hasXGB = !!results.xgb;
+  const hasSLM = !!results.slm;
   const hasLRError = !hasLR && !!trainErrors.lr;
   const hasRFError = !hasRF && !!trainErrors.rf;
   const hasXGBError = !hasXGB && !!trainErrors.xgb;
+  const hasSLMError = !hasSLM && !!trainErrors.slm;
+  const hasHybridSLM = !!results.hybrid_slm;
+  const hasHybridSLMError = !hasHybridSLM && !!trainErrors.hybrid;
+  const hasHybrid = !!results.hybrid;
+  const hasHybridError = !hasHybrid && !!trainErrors.hybrid;
 
   return (
     <div className="blgf-ai-content">
@@ -96,6 +102,62 @@ export default function ResultsTabUI({
             XGBoost ✕
           </div>
         )}
+
+        {hasSLM && (
+          <div
+            className={`blgf-ai-modeltab ${activeModelTab === "slm" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("slm")}
+          >
+            Spatial Lag Model
+          </div>
+        )}
+        {hasSLMError && (
+          <div
+            className={`blgf-ai-modeltab ${activeModelTab === "slm_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("slm_err")}
+            style={{ color: "#f87171" }}
+          >
+            Spatial Lag Model ✕
+          </div>
+        )}
+
+        {hasHybridSLM && (
+          <div
+            className={`blgf-ai-modeltab ${activeModelTab === "hybrid_slm" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("hybrid_slm")}
+            style={activeModelTab === "hybrid_slm" ? { borderColor: "#2563eb" } : {}}
+          >
+            Spatial Lag Model
+          </div>
+        )}
+        {hasHybridSLMError && (
+          <div
+            className={`blgf-ai-modeltab ${activeModelTab === "hybrid_slm_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("hybrid_slm_err")}
+            style={{ color: "#f87171" }}
+          >
+            Spatial Lag Model ✕
+          </div>
+        )}
+
+        {hasHybrid && (
+          <div
+            className={`blgf-ai-modeltab ${activeModelTab === "hybrid" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("hybrid")}
+            style={activeModelTab === "hybrid" ? { borderColor: "#7c3aed" } : {}}
+          >
+            Hybrid Spatial Lag Model + Random Forest
+          </div>
+        )}
+        {hasHybridError && (
+          <div
+            className={`blgf-ai-modeltab ${activeModelTab === "hybrid_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("hybrid_err")}
+            style={{ color: "#f87171" }}
+          >
+            Hybrid Spatial Lag Model + Random Forest ✕
+          </div>
+        )}
       </div>
 
       {!activeModelTab && (
@@ -156,11 +218,12 @@ function ModelSection({
   if (!modelResult) return null;
 
   const niceName =
-    modelType === "lr"
-      ? "Linear Regression"
-      : modelType === "rf"
-        ? "Random Forest"
-        : "XGBoost";
+    modelType === "lr"         ? "Linear Regression"
+    : modelType === "rf"       ? "Random Forest"
+    : modelType === "slm"      ? "Spatial Lag Model"
+    : modelType === "hybrid_slm" ? "Spatial Lag Model"
+    : modelType === "hybrid"   ? "Hybrid Spatial Lag Model + Random Forest"
+    : "XGBoost";
 
   return (
     <div className="blgf-ai-result">
@@ -204,6 +267,8 @@ function ModelSection({
           />
           <ImportanceSection modelType={modelType} result={modelResult} />
           {modelType === "lr" && <LRCoefficientsSection result={modelResult} />}
+          {(modelType === "slm" || modelType === "hybrid_slm") && <SLMCoefficientsSection result={modelResult} />}
+          {(modelType === "hybrid" || modelType === "hybrid_slm") && <HybridDiagnosticsSection result={modelResult} />}
           <ModelCAMA result={modelResult} />
         </>
       )}
@@ -255,6 +320,20 @@ function MetricsSection({
               ["RMSE", metrics.RMSE ?? metrics.rmse],
               ["MAE", metrics.MAE ?? metrics.mae],
               ["R²", metrics["R²"] ?? metrics.r2],
+              ...(modelType === "slm" ? [
+                ["Pseudo R²", metrics.pseudo_r2],
+                ["ρ (Spatial Lag)", metrics.rho],
+                ["Moran's I (residuals)", metrics.moran_i],
+                ["Moran's I p-value", metrics.moran_p],
+              ] : []),
+              ...(modelType === "hybrid" ? [
+                ["R² — SLM Stage", metrics.r2_slm],
+                ["RMSE — SLM Stage", metrics.rmse_slm],
+                ["Pseudo R² (SLM)", metrics.pseudo_r2],
+                ["ρ (Spatial Lag)", metrics.rho],
+                ["Moran's I — SLM residuals", metrics.moran_i_slm],
+                ["Moran's I — Hybrid residuals", metrics.moran_i_hybrid],
+              ] : []),
             ]
               .filter(([, v]) => v !== undefined && v !== null)
               .map(([label, value]) => (
@@ -436,6 +515,199 @@ function LRCoefficientsSection({ result }) {
               </tr>
             </tbody>
           </table>
+        </>
+      )}
+    </div>
+  );
+}
+
+// --- SLM Coefficients & Spatial Diagnostics ---
+
+function SLMCoefficientsSection({ result }) {
+  const coeffs  = result?.coefficients || [];
+  const rho     = result?.rho;
+  const moranI  = result?.moran_i;
+  const moranP  = result?.moran_p;
+  const metrics = result?.metrics || {};
+
+  return (
+    <div className="blgf-ai-card">
+      <div className="blgf-ai-subtitle2">Spatial Diagnostics</div>
+
+      {/* Spatial summary badges */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        {rho !== undefined && rho !== null && (
+          <div style={{ background: "#fff7e6", border: "1px solid #f59e0b", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#92400e", fontWeight: 700, marginBottom: 2 }}>ρ (Spatial Lag)</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#b45309" }}>{rho.toFixed(4)}</div>
+          </div>
+        )}
+        {moranI !== undefined && moranI !== null && (
+          <div style={{ background: "#eff6ff", border: "1px solid #3b82f6", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 700, marginBottom: 2 }}>Moran's I (residuals)</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#1d4ed8" }}>{moranI.toFixed(4)}</div>
+            {moranP !== null && (
+              <div style={{ fontSize: 10, color: moranP < 0.05 ? "#dc2626" : "#6b7280" }}>
+                p = {moranP.toFixed(4)} {moranP < 0.05 ? "★ significant" : ""}
+              </div>
+            )}
+          </div>
+        )}
+        {metrics.pseudo_r2 !== undefined && (
+          <div style={{ background: "#f0fdf4", border: "1px solid #22c55e", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#166534", fontWeight: 700, marginBottom: 2 }}>Pseudo R²</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#15803d" }}>{metrics.pseudo_r2.toFixed(4)}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Coefficients table */}
+      {coeffs.length > 0 && (
+        <>
+          <div className="blgf-ai-subtitle3">Coefficient Estimates (z-test)</div>
+          <table className="blgf-ai-table narrow">
+            <thead>
+              <tr>
+                <th>Variable</th>
+                <th className="align-right">Coef</th>
+                <th className="align-right">Std Err</th>
+                <th className="align-right">z-stat</th>
+                <th className="align-right">p-value</th>
+                <th className="align-right">Sig.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coeffs.map((row, i) => (
+                <tr key={i} style={row.significant ? { background: "rgba(34,197,94,0.06)" } : {}}>
+                  <td>{row.variable}</td>
+                  <td className="align-right">{row.coef?.toFixed(4)}</td>
+                  <td className="align-right">{row.std_err?.toFixed(4)}</td>
+                  <td className="align-right">{row.z?.toFixed(4)}</td>
+                  <td className="align-right">{row.p?.toExponential(3)}</td>
+                  <td className="align-right" style={{ color: row.significant ? "#16a34a" : "#94a3b8" }}>
+                    {row.significant ? "★" : "—"}
+                  </td>
+                </tr>
+              ))}
+              {/* Rho row */}
+              {rho !== undefined && (
+                <tr style={{ background: "rgba(245,158,11,0.08)", fontWeight: 600 }}>
+                  <td>W*y (ρ)</td>
+                  <td className="align-right">{rho.toFixed(4)}</td>
+                  <td className="align-right" colSpan={4} style={{ color: "#92400e", fontSize: 12 }}>
+                    Spatial lag coefficient
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>
+            ★ = significant at p &lt; 0.05 · Weights: Queen contiguity (row-standardized)
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// --- Hybrid SLM+RF Diagnostics Section ---
+
+function HybridDiagnosticsSection({ result }) {
+  const rho        = result?.rho;
+  const moranISLM  = result?.moran_i_slm;
+  const moranPSLM  = result?.moran_p_slm;
+  const moranIHyb  = result?.moran_i_hybrid;
+  const moranPHyb  = result?.moran_p_hybrid;
+  const metrics    = result?.metrics || {};
+  const coeffs     = result?.slm_coefficients || [];
+
+  return (
+    <div className="blgf-ai-card">
+      <div className="blgf-ai-subtitle2">Spatial Diagnostics</div>
+
+      {/* Badges */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        {rho !== undefined && rho !== null && (
+          <div style={{ background: "#fff7e6", border: "1px solid #f59e0b", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#92400e", fontWeight: 700, marginBottom: 2 }}>ρ — Stage 1 SLM</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#b45309" }}>{rho.toFixed(4)}</div>
+          </div>
+        )}
+        {moranISLM !== undefined && moranISLM !== null && (
+          <div style={{ background: "#eff6ff", border: "1px solid #3b82f6", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 700, marginBottom: 2 }}>Moran's I — SLM residuals</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#1d4ed8" }}>{moranISLM.toFixed(4)}</div>
+            {moranPSLM !== null && (
+              <div style={{ fontSize: 10, color: moranPSLM < 0.05 ? "#dc2626" : "#6b7280" }}>
+                p = {moranPSLM.toFixed(4)} {moranPSLM < 0.05 ? "★ significant" : ""}
+              </div>
+            )}
+          </div>
+        )}
+        {moranIHyb !== undefined && moranIHyb !== null && (
+          <div style={{ background: "#f5f3ff", border: "1px solid #7c3aed", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#5b21b6", fontWeight: 700, marginBottom: 2 }}>Moran's I — Hybrid residuals</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#7c3aed" }}>{moranIHyb.toFixed(4)}</div>
+            {moranPHyb !== null && (
+              <div style={{ fontSize: 10, color: moranPHyb < 0.05 ? "#dc2626" : "#16a34a" }}>
+                p = {moranPHyb.toFixed(4)} {moranPHyb < 0.05 ? "★ still significant" : "✓ not significant"}
+              </div>
+            )}
+          </div>
+        )}
+        {metrics.r2_slm !== undefined && (
+          <div style={{ background: "#f0fdf4", border: "1px solid #22c55e", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#166534", fontWeight: 700, marginBottom: 2 }}>R² improvement</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#15803d" }}>
+              +{((metrics.r2 - metrics.r2_slm) * 100).toFixed(2)}%
+            </div>
+            <div style={{ fontSize: 10, color: "#6b7280" }}>Hybrid vs SLM alone</div>
+          </div>
+        )}
+      </div>
+
+      {/* SLM Stage 1 coefficients */}
+      {coeffs.length > 0 && (
+        <>
+          <div className="blgf-ai-subtitle3">Stage 1 — SLM Coefficients (z-test)</div>
+          <table className="blgf-ai-table narrow">
+            <thead>
+              <tr>
+                <th>Variable</th>
+                <th className="align-right">Coef</th>
+                <th className="align-right">Std Err</th>
+                <th className="align-right">z-stat</th>
+                <th className="align-right">p-value</th>
+                <th className="align-right">Sig.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coeffs.map((row, i) => (
+                <tr key={i} style={row.significant ? { background: "rgba(34,197,94,0.06)" } : {}}>
+                  <td>{row.variable}</td>
+                  <td className="align-right">{row.coef?.toFixed(4)}</td>
+                  <td className="align-right">{row.std_err?.toFixed(4)}</td>
+                  <td className="align-right">{row.z?.toFixed(4)}</td>
+                  <td className="align-right">{row.p?.toExponential(3)}</td>
+                  <td className="align-right" style={{ color: row.significant ? "#16a34a" : "#94a3b8" }}>
+                    {row.significant ? "★" : "—"}
+                  </td>
+                </tr>
+              ))}
+              {rho !== undefined && (
+                <tr style={{ background: "rgba(245,158,11,0.08)", fontWeight: 600 }}>
+                  <td>W*y (ρ)</td>
+                  <td className="align-right">{rho.toFixed(4)}</td>
+                  <td className="align-right" colSpan={4} style={{ color: "#92400e", fontSize: 12 }}>
+                    Spatial lag coefficient
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>
+            ★ = significant at p &lt; 0.05 · Stage 2 RF feature importances shown above
+          </div>
         </>
       )}
     </div>
