@@ -159,31 +159,36 @@ export default function InputsTabUI({
 }) {
 
   const toggleModel = (key) => {
-    if (key === "hybrid") {
-      const next = !modelChecks.hybrid;
-      // When enabling hybrid: uncheck all other models; when disabling: just uncheck hybrid
+    const isHybrid = key === "hybrid" || key === "hybrid_sdm_xgb";
+
+    if (isHybrid) {
+      const next = !modelChecks[key];
+      // When enabling a hybrid: uncheck all other models; when disabling: just uncheck it
       setModelChecks((p) => ({
-        lr:     next ? false : p.lr,
-        rf:     next ? false : p.rf,
-        xgb:    next ? false : p.xgb,
-        slm:    next ? false : p.slm,
-        hybrid: next,
+        lr:              next ? false : p.lr,
+        rf:              next ? false : p.rf,
+        xgb:             next ? false : p.xgb,
+        slm:             next ? false : p.slm,
+        sdm:             next ? false : p.sdm,
+        gwr:             next ? false : p.gwr,
+        hybrid:          key === "hybrid"         ? next : false,
+        hybrid_sdm_xgb:  key === "hybrid_sdm_xgb" ? next : false,
       }));
     } else {
-      // Cannot toggle other models while hybrid is selected
-      if (modelChecks.hybrid) return;
+      // Cannot toggle other models while any hybrid is selected
+      if (modelChecks.hybrid || modelChecks.hybrid_sdm_xgb) return;
       setModelChecks((p) => ({ ...p, [key]: !p[key] }));
     }
   };
 
-  const hybridActive = modelChecks.hybrid;
+  const anyHybridActive = modelChecks.hybrid || modelChecks.hybrid_sdm_xgb;
 
   return (
     <div className="blgf-ai-content">
       <div className="blgf-ai-block">
         <div className="blgf-ai-label">Select Models</div>
 
-        {/* --- AI Tools --- */}
+        {/* --- AI Models --- */}
         <div className="blgf-ai-model-group-label">AI Models</div>
         <div className="blgf-ai-models-grid">
           <ModelCard
@@ -191,25 +196,25 @@ export default function InputsTabUI({
             description="Base statistical model for continuous target prediction."
             checked={modelChecks.lr}
             onChange={() => toggleModel("lr")}
-            disabled={hybridActive}
+            disabled={anyHybridActive}
           />
           <ModelCard
             label="Random Forest"
             description="Ensemble learning method using multiple decision trees."
             checked={modelChecks.rf}
             onChange={() => toggleModel("rf")}
-            disabled={hybridActive}
+            disabled={anyHybridActive}
           />
           <ModelCard
             label="XGBoost"
             description="Gradient boosting framework for high performance."
             checked={modelChecks.xgb}
             onChange={() => toggleModel("xgb")}
-            disabled={hybridActive}
+            disabled={anyHybridActive}
           />
         </div>
 
-        {/* --- Geospatial Models --- */}
+        {/* --- Spatial Models --- */}
         <div className="blgf-ai-model-group-label" style={{ marginTop: 16 }}>Spatial Models</div>
         <div className="blgf-ai-models-grid">
           <ModelCard
@@ -218,7 +223,23 @@ export default function InputsTabUI({
             checked={modelChecks.slm}
             onChange={() => toggleModel("slm")}
             accent="#2563eb"
-            disabled={hybridActive}
+            disabled={anyHybridActive}
+          />
+          <ModelCard
+            label="Spatial Durbin Model"
+            description="Extends SLM by adding spatially lagged predictors (WX), capturing both spatial contagion and neighbor spillover effects."
+            checked={modelChecks.sdm}
+            onChange={() => toggleModel("sdm")}
+            accent="#0f766e"
+            disabled={anyHybridActive}
+          />
+          <ModelCard
+            label="Geographically Weighted Regression"
+            description="Fits a separate local regression at every spatial unit using kernel-weighted neighbors — produces a surface of spatially varying coefficients."
+            checked={modelChecks.gwr}
+            onChange={() => toggleModel("gwr")}
+            accent="#7c3aed"
+            disabled={anyHybridActive}
           />
         </div>
 
@@ -231,6 +252,13 @@ export default function InputsTabUI({
             checked={modelChecks.hybrid}
             onChange={() => toggleModel("hybrid")}
             accent="#7c3aed"
+          />
+          <ModelCard
+            label="Spatial Durbin Model + XGBoost"
+            description="Two-stage model: SDM captures spatial contagion and neighbor spillovers (WX), XGBoost corrects nonlinear residuals."
+            checked={modelChecks.hybrid_sdm_xgb}
+            onChange={() => toggleModel("hybrid_sdm_xgb")}
+            accent="#0f766e"
           />
         </div>
       </div>

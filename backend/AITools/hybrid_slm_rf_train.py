@@ -333,7 +333,8 @@ async def train_hybrid_model(
         try:
             gdf_slm = gdf_valid.copy()
             gdf_slm[safe_target_name] = y_full
-            gdf_slm["pred_slm"]       = pred_slm
+            gdf_slm["prediction"]     = pred_slm
+            gdf_slm["slm_residual"]   = eps_slm
             gdf_slm = gdf_slm.drop(columns=["__original_index__"], errors="ignore")
             if pin_series is not None:
                 try:
@@ -358,9 +359,11 @@ async def train_hybrid_model(
         hybrid_zip_out = None
         try:
             gdf_hybrid = gdf_valid.copy()
-            gdf_hybrid[safe_target_name] = y_full
-            gdf_hybrid["pred_slm"]       = pred_slm
-            gdf_hybrid["pred_slm_rf"]    = pred_hybrid
+            gdf_hybrid[safe_target_name]  = y_full
+            gdf_hybrid["slm_pred"]        = pred_slm
+            gdf_hybrid["slm_residual"]    = eps_slm
+            gdf_hybrid["rf_correction"]   = pred_rf_correction
+            gdf_hybrid["prediction"]      = pred_hybrid
             gdf_hybrid = gdf_hybrid.drop(columns=["__original_index__"], errors="ignore")
             if pin_series is not None:
                 try:
@@ -385,7 +388,8 @@ async def train_hybrid_model(
         slm_csv_path = os.path.join(slm_export_path, f"{slm_base}.csv")
         slm_csv_df   = df_valid[indep + [target]].copy()
         slm_csv_df[safe_target_name] = y_full
-        slm_csv_df["pred_slm"]       = pred_slm
+        slm_csv_df["prediction"]     = pred_slm
+        slm_csv_df["slm_residual"]   = eps_slm
         if pin_series is not None:
             slm_csv_df.insert(0, "PIN", pin_series.iloc[df_valid.index].values)
         slm_csv_df.to_csv(slm_csv_path, index=False)
@@ -396,8 +400,10 @@ async def train_hybrid_model(
         hybrid_csv_path = os.path.join(hybrid_export_path, f"{hybrid_base}.csv")
         hybrid_csv_df   = df_valid[indep + [target]].copy()
         hybrid_csv_df[safe_target_name] = y_full
-        hybrid_csv_df["pred_slm"]       = pred_slm
-        hybrid_csv_df["pred_slm_rf"]    = pred_hybrid
+        hybrid_csv_df["slm_pred"]       = pred_slm
+        hybrid_csv_df["slm_residual"]   = eps_slm
+        hybrid_csv_df["rf_correction"]  = pred_rf_correction
+        hybrid_csv_df["prediction"]     = pred_hybrid
         if pin_series is not None:
             hybrid_csv_df.insert(0, "PIN", pin_series.iloc[df_valid.index].values)
         hybrid_csv_df.to_csv(hybrid_csv_path, index=False)
@@ -410,25 +416,28 @@ async def train_hybrid_model(
         # SLM preview
         slm_preview_df = df_valid.copy()
         slm_preview_df[safe_target_name] = y_full
-        slm_preview_df["pred_slm"]       = pred_slm
+        slm_preview_df["prediction"]     = pred_slm
+        slm_preview_df["slm_residual"]   = eps_slm
         if pin_series is not None:
             slm_preview_df.insert(0, "PIN", pin_series.iloc[df_valid.index].values)
         slm_preview_cols = (
             (["PIN"] if pin_series is not None else [])
-            + indep + [safe_target_name, "pred_slm"]
+            + indep + [safe_target_name, "prediction", "slm_residual"]
         )
         slm_cama_preview = slm_preview_df[slm_preview_cols].head(100).to_dict("records")
 
         # Hybrid preview
         hybrid_preview_df = df_valid.copy()
-        hybrid_preview_df[safe_target_name] = y_full
-        hybrid_preview_df["pred_slm"]       = pred_slm
-        hybrid_preview_df["pred_slm_rf"]    = pred_hybrid
+        hybrid_preview_df[safe_target_name]  = y_full
+        hybrid_preview_df["slm_pred"]        = pred_slm
+        hybrid_preview_df["slm_residual"]    = eps_slm
+        hybrid_preview_df["rf_correction"]   = pred_rf_correction
+        hybrid_preview_df["prediction"]      = pred_hybrid
         if pin_series is not None:
             hybrid_preview_df.insert(0, "PIN", pin_series.iloc[df_valid.index].values)
         hybrid_preview_cols = (
             (["PIN"] if pin_series is not None else [])
-            + indep + [safe_target_name, "pred_slm", "pred_slm_rf"]
+            + indep + [safe_target_name, "slm_pred", "slm_residual", "rf_correction", "prediction"]
         )
         hybrid_cama_preview = hybrid_preview_df[hybrid_preview_cols].head(100).to_dict("records")
 

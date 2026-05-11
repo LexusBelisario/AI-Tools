@@ -4,6 +4,7 @@ import geopandas as gpd
 from sqlalchemy import text
 import os
 import json
+import shutil
 from datetime import datetime
 import re
 
@@ -18,6 +19,29 @@ router = APIRouter(prefix="/common", tags=["common"])
 
 
 DATA_DIR = os.getenv("DATA_DIR", "/data").strip() or "/data"
+
+
+def _cleanup_export_folder(file_path: str):
+    """
+    Delete the entire exported_models/<artifact_base>/ folder that contains
+    the given file. Called after a successful auto-save so disk doesn't bloat.
+    Silently ignores errors so a cleanup failure never breaks the response.
+    """
+    try:
+        p = Path(file_path)
+        # Walk up until we find the direct child of exported_models/
+        # Structure: .../exported_models/<artifact_base>/...
+        parts = p.parts
+        for i, part in enumerate(parts):
+            if part == "exported_models" and i + 1 < len(parts):
+                artifact_dir = Path(*parts[: i + 2])
+                if artifact_dir.is_dir():
+                    shutil.rmtree(artifact_dir)
+                    print(f"🧹 Cleaned up export folder: {artifact_dir}")
+                return
+        print(f"⚠️ Could not locate exported_models parent for: {file_path}")
+    except Exception as e:
+        print(f"⚠️ Cleanup failed (non-fatal): {e}")
 
 
 def _safe_join_data_dir(p: str) -> str:
@@ -447,31 +471,33 @@ async def auto_save_training_results(
             with open(model_path, "rb") as f:
                 raw_bytes = f.read()
 
-            # For SLM-based models, strip heavy internal data from GM_Lag object
+            # For SLM/SDM-based models, strip heavy internal data from GM_Lag object
             # before saving to DB to avoid 1GB+ blob sizes
-            if model_type in ("slm", "hybrid_slm_rf"):
+            if model_type in ("slm", "hybrid_slm_rf", "sdm", "hybrid_sdm_xgb"):
                 try:
                     import io as _io
                     import joblib as _joblib
                     bundle = _joblib.load(_io.BytesIO(raw_bytes))
-                    if isinstance(bundle, dict) and "slm" in bundle:
-                        slm_obj = bundle["slm"]
+                    # SLM bundles use key "slm"; SDM/hybrid_sdm_xgb bundles use key "model"
+                    spatial_key = "slm" if "slm" in bundle else "model" if "model" in bundle else None
+                    if isinstance(bundle, dict) and spatial_key:
+                        spatial_obj = bundle[spatial_key]
                         # Strip large internal arrays stored by GM_Lag
                         for attr in ("y", "x", "z", "h", "yend", "q", "w_lags",
                                      "predy_e", "e_pred", "u", "e_filtered", "vm"):
-                            if hasattr(slm_obj, attr):
+                            if hasattr(spatial_obj, attr):
                                 try:
-                                    setattr(slm_obj, attr, None)
+                                    setattr(spatial_obj, attr, None)
                                 except Exception:
                                     pass
                         buf = _io.BytesIO()
                         _joblib.dump(bundle, buf)
                         model_blob = buf.getvalue()
-                        print(f"   ✅ Stripped SLM internals: {len(raw_bytes):,} → {len(model_blob):,} bytes")
+                        print(f"   ✅ Stripped GM_Lag internals ({model_type}): {len(raw_bytes):,} → {len(model_blob):,} bytes")
                     else:
                         model_blob = raw_bytes
                 except Exception as strip_err:
-                    print(f"   ⚠️ Could not strip SLM internals: {strip_err}, using raw blob")
+                    print(f"   ⚠️ Could not strip GM_Lag internals: {strip_err}, using raw blob")
                     model_blob = raw_bytes
             else:
                 model_blob = raw_bytes
@@ -566,6 +592,12 @@ async def auto_save_training_results(
                 predictions_saved = True
                 prediction_count = len(gdf)
                 print(f"✅ Saved {prediction_count} predictions to {predictions_table}")
+
+        # ---------------------------------------------------------------
+        # Cleanup: delete the export folder now that everything is in DB
+        # ---------------------------------------------------------------
+        if model_path and os.path.exists(model_path):
+            _cleanup_export_folder(model_path)
 
         return {
             "success": True,

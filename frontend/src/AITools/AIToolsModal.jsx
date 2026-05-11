@@ -38,7 +38,10 @@ export default function AIToolsModal({
     rf: false,
     xgb: false,
     slm: false,
+    sdm: false,
+    gwr: false,
     hybrid: false,
+    hybrid_sdm_xgb: false,
   });
 
   const [results, setResults] = useState({
@@ -46,8 +49,12 @@ export default function AIToolsModal({
     rf: null,
     xgb: null,
     slm: null,
+    sdm: null,
+    gwr: null,
     hybrid_slm: null,
     hybrid: null,
+    hybrid_sdm: null,
+    hybrid_sdm_xgb: null,
   });
 
   const [trainErrors, setTrainErrors] = useState({});
@@ -282,7 +289,11 @@ export default function AIToolsModal({
       fdBase.append("independent_vars", JSON.stringify(independentVars));
       fdBase.append("excluded_indices", JSON.stringify(excludedIndices));
 
-      const newResults = { lr: null, rf: null, xgb: null, slm: null, hybrid_slm: null, hybrid: null };
+      const newResults = {
+        lr: null, rf: null, xgb: null, slm: null, sdm: null, gwr: null,
+        hybrid_slm: null, hybrid: null,
+        hybrid_sdm: null, hybrid_sdm_xgb: null,
+      };
       const trainErrors = {};
 
       const calls = selected.map(async (m) => {
@@ -290,10 +301,13 @@ export default function AIToolsModal({
         for (const [key, val] of fdBase.entries()) fd.append(key, val);
 
         const endpoint =
-          m === "lr"      ? "/ai-tools/train-lr/train"
-          : m === "rf"    ? "/ai-tools/train-rf/train"
-          : m === "slm"   ? "/ai-tools/train-slm/train"
-          : m === "hybrid" ? "/ai-tools/train-hybrid-slm-rf/train"
+          m === "lr"              ? "/ai-tools/train-lr/train"
+          : m === "rf"            ? "/ai-tools/train-rf/train"
+          : m === "slm"           ? "/ai-tools/train-slm/train"
+          : m === "sdm"           ? "/ai-tools/train-sdm/train"
+          : m === "gwr"           ? "/ai-tools/train-gwr/train"
+          : m === "hybrid"        ? "/ai-tools/train-hybrid-slm-rf/train"
+          : m === "hybrid_sdm_xgb" ? "/ai-tools/train-hybrid-sdm-xgb/train"
           : "/ai-tools/train-xgb/train";
 
         try {
@@ -319,6 +333,9 @@ export default function AIToolsModal({
           if (m === "hybrid") {
             newResults["hybrid_slm"] = data.slm_stage;
             newResults["hybrid"]     = data.hybrid_stage;
+          } else if (m === "hybrid_sdm_xgb") {
+            newResults["hybrid_sdm"]     = data.sdm_stage;
+            newResults["hybrid_sdm_xgb"] = data.hybrid_stage;
           } else {
             newResults[m] = data;
           }
@@ -335,8 +352,9 @@ export default function AIToolsModal({
 
       const expandedSelected = [];
       for (const m of selected) {
-        if (m === "hybrid") { expandedSelected.push("hybrid_slm", "hybrid"); }
-        else { expandedSelected.push(m); }
+        if (m === "hybrid")              { expandedSelected.push("hybrid_slm", "hybrid"); }
+        else if (m === "hybrid_sdm_xgb") { expandedSelected.push("hybrid_sdm", "hybrid_sdm_xgb"); }
+        else                             { expandedSelected.push(m); }
       }
       const first = expandedSelected.find((m) => newResults[m]);
       if (first) {
@@ -403,6 +421,9 @@ export default function AIToolsModal({
       if (m === "hybrid") {
         if (results["hybrid_slm"]) expandedModels.push("hybrid_slm");
         if (results["hybrid"])     expandedModels.push("hybrid");
+      } else if (m === "hybrid_sdm_xgb") {
+        if (results["hybrid_sdm"])     expandedModels.push("hybrid_sdm");
+        if (results["hybrid_sdm_xgb"]) expandedModels.push("hybrid_sdm_xgb");
       } else {
         expandedModels.push(m);
       }
@@ -413,8 +434,10 @@ export default function AIToolsModal({
       if (!result) continue;
 
       const backendModelType =
-        modelType === "hybrid_slm" ? "slm"
-        : modelType === "hybrid"   ? "hybrid_slm_rf"
+        modelType === "hybrid_slm"       ? "slm"
+        : modelType === "hybrid"         ? "hybrid_slm_rf"
+        : modelType === "hybrid_sdm"     ? "sdm"
+        : modelType === "hybrid_sdm_xgb" ? "hybrid_sdm_xgb"
         : modelType;
 
       try {
@@ -465,7 +488,12 @@ export default function AIToolsModal({
     }
   };
 
-  const hasResults = !!(results.lr || results.rf || results.xgb || results.slm || results.hybrid_slm || results.hybrid);
+  const hasResults = !!(
+    results.lr || results.rf || results.xgb ||
+    results.slm || results.sdm || results.gwr ||
+    results.hybrid_slm || results.hybrid ||
+    results.hybrid_sdm || results.hybrid_sdm_xgb
+  );
 
   const resetAllState = () => {
     setActiveTab("inputs");
@@ -477,7 +505,11 @@ export default function AIToolsModal({
     setDependentVar("");
     setIndependentVars([]);
     setExcludedIndices([]);
-    setResults({ lr: null, rf: null, xgb: null, slm: null, hybrid_slm: null, hybrid: null });
+    setResults({
+      lr: null, rf: null, xgb: null, slm: null, sdm: null, gwr: null,
+      hybrid_slm: null, hybrid: null,
+      hybrid_sdm: null, hybrid_sdm_xgb: null,
+    });
     setTrainErrors({});
     setActiveModelTab(null);
     setAvailableTables([]);
@@ -523,7 +555,11 @@ export default function AIToolsModal({
     setDependentVar("");
     setIndependentVars([]);
     setExcludedIndices([]);
-    setResults({ lr: null, rf: null, xgb: null, slm: null, hybrid_slm: null, hybrid: null });
+    setResults({
+      lr: null, rf: null, xgb: null, slm: null, sdm: null, gwr: null,
+      hybrid_slm: null, hybrid: null,
+      hybrid_sdm: null, hybrid_sdm_xgb: null,
+    });
     setActiveModelTab(null);
   }, [userSchema]);
 

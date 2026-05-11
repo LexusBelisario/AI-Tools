@@ -27,137 +27,162 @@ export default function ResultsTabUI({
   setSaveConfig,
   userSchema,
 }) {
-  const hasLR = !!results.lr;
-  const hasRF = !!results.rf;
+  const hasLR  = !!results.lr;
+  const hasRF  = !!results.rf;
   const hasXGB = !!results.xgb;
   const hasSLM = !!results.slm;
-  const hasLRError = !hasLR && !!trainErrors.lr;
-  const hasRFError = !hasRF && !!trainErrors.rf;
+  const hasLRError  = !hasLR  && !!trainErrors.lr;
+  const hasRFError  = !hasRF  && !!trainErrors.rf;
   const hasXGBError = !hasXGB && !!trainErrors.xgb;
   const hasSLMError = !hasSLM && !!trainErrors.slm;
-  const hasHybridSLM = !!results.hybrid_slm;
+
+  // Hybrid SLM+RF
+  const hasHybridSLM      = !!results.hybrid_slm;
   const hasHybridSLMError = !hasHybridSLM && !!trainErrors.hybrid;
-  const hasHybrid = !!results.hybrid;
-  const hasHybridError = !hasHybrid && !!trainErrors.hybrid;
+  const hasHybrid         = !!results.hybrid;
+  const hasHybridError    = !hasHybrid && !!trainErrors.hybrid;
+
+  // Hybrid SDM+XGB
+  const hasHybridSDM      = !!results.hybrid_sdm;
+  const hasHybridSDMError = !hasHybridSDM && !!trainErrors.hybrid_sdm_xgb;
+  const hasHybridSDMXGB   = !!results.hybrid_sdm_xgb;
+  const hasHybridSDMXGBError = !hasHybridSDMXGB && !!trainErrors.hybrid_sdm_xgb;
+
+  // GWR
+  const hasGWR      = !!results.gwr;
+  const hasGWRError = !hasGWR && !!trainErrors.gwr;
 
   return (
     <div className="blgf-ai-content">
       <div className="blgf-ai-modeltabs">
+
         {hasLR && (
-          <div
-            className={`blgf-ai-modeltab ${
-              activeModelTab === "lr" ? "active" : ""
-            }`}
-            onClick={() => setActiveModelTab("lr")}
-          >
+          <div className={`blgf-ai-modeltab ${activeModelTab === "lr" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("lr")}>
             Linear Regression
           </div>
         )}
         {hasLRError && (
-          <div
-            className={`blgf-ai-modeltab ${activeModelTab === "lr_err" ? "active" : ""}`}
-            onClick={() => setActiveModelTab("lr_err")}
-            style={{ color: "#f87171" }}
-          >
+          <div className={`blgf-ai-modeltab ${activeModelTab === "lr_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("lr_err")} style={{ color: "#f87171" }}>
             Linear Regression ✕
           </div>
         )}
 
         {hasRF && (
-          <div
-            className={`blgf-ai-modeltab ${
-              activeModelTab === "rf" ? "active" : ""
-            }`}
-            onClick={() => setActiveModelTab("rf")}
-          >
+          <div className={`blgf-ai-modeltab ${activeModelTab === "rf" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("rf")}>
             Random Forest
           </div>
         )}
         {hasRFError && (
-          <div
-            className={`blgf-ai-modeltab ${activeModelTab === "rf_err" ? "active" : ""}`}
-            onClick={() => setActiveModelTab("rf_err")}
-            style={{ color: "#f87171" }}
-          >
+          <div className={`blgf-ai-modeltab ${activeModelTab === "rf_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("rf_err")} style={{ color: "#f87171" }}>
             Random Forest ✕
           </div>
         )}
 
         {hasXGB && (
-          <div
-            className={`blgf-ai-modeltab ${
-              activeModelTab === "xgb" ? "active" : ""
-            }`}
-            onClick={() => setActiveModelTab("xgb")}
-          >
+          <div className={`blgf-ai-modeltab ${activeModelTab === "xgb" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("xgb")}>
             XGBoost
           </div>
         )}
         {hasXGBError && (
-          <div
-            className={`blgf-ai-modeltab ${activeModelTab === "xgb_err" ? "active" : ""}`}
-            onClick={() => setActiveModelTab("xgb_err")}
-            style={{ color: "#f87171" }}
-          >
+          <div className={`blgf-ai-modeltab ${activeModelTab === "xgb_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("xgb_err")} style={{ color: "#f87171" }}>
             XGBoost ✕
           </div>
         )}
 
         {hasSLM && (
-          <div
-            className={`blgf-ai-modeltab ${activeModelTab === "slm" ? "active" : ""}`}
-            onClick={() => setActiveModelTab("slm")}
-          >
+          <div className={`blgf-ai-modeltab ${activeModelTab === "slm" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("slm")}>
             Spatial Lag Model
           </div>
         )}
         {hasSLMError && (
-          <div
-            className={`blgf-ai-modeltab ${activeModelTab === "slm_err" ? "active" : ""}`}
-            onClick={() => setActiveModelTab("slm_err")}
-            style={{ color: "#f87171" }}
-          >
+          <div className={`blgf-ai-modeltab ${activeModelTab === "slm_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("slm_err")} style={{ color: "#f87171" }}>
             Spatial Lag Model ✕
           </div>
         )}
 
+        {/* GWR */}
+        {hasGWR && (
+          <div className={`blgf-ai-modeltab ${activeModelTab === "gwr" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("gwr")}
+            style={activeModelTab === "gwr" ? { borderColor: "#7c3aed" } : {}}>
+            Geographically Weighted Regression
+          </div>
+        )}
+        {hasGWRError && (
+          <div className={`blgf-ai-modeltab ${activeModelTab === "gwr_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("gwr_err")} style={{ color: "#f87171" }}>
+            Geographically Weighted Regression ✕
+          </div>
+        )}
+
+        {/* Hybrid SLM+RF — Stage 1 (SLM) */}
         {hasHybridSLM && (
-          <div
-            className={`blgf-ai-modeltab ${activeModelTab === "hybrid_slm" ? "active" : ""}`}
+          <div className={`blgf-ai-modeltab ${activeModelTab === "hybrid_slm" ? "active" : ""}`}
             onClick={() => setActiveModelTab("hybrid_slm")}
-            style={activeModelTab === "hybrid_slm" ? { borderColor: "#2563eb" } : {}}
-          >
+            style={activeModelTab === "hybrid_slm" ? { borderColor: "#2563eb" } : {}}>
             Spatial Lag Model
           </div>
         )}
         {hasHybridSLMError && (
-          <div
-            className={`blgf-ai-modeltab ${activeModelTab === "hybrid_slm_err" ? "active" : ""}`}
-            onClick={() => setActiveModelTab("hybrid_slm_err")}
-            style={{ color: "#f87171" }}
-          >
+          <div className={`blgf-ai-modeltab ${activeModelTab === "hybrid_slm_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("hybrid_slm_err")} style={{ color: "#f87171" }}>
             Spatial Lag Model ✕
           </div>
         )}
 
+        {/* Hybrid SLM+RF — Final */}
         {hasHybrid && (
-          <div
-            className={`blgf-ai-modeltab ${activeModelTab === "hybrid" ? "active" : ""}`}
+          <div className={`blgf-ai-modeltab ${activeModelTab === "hybrid" ? "active" : ""}`}
             onClick={() => setActiveModelTab("hybrid")}
-            style={activeModelTab === "hybrid" ? { borderColor: "#7c3aed" } : {}}
-          >
+            style={activeModelTab === "hybrid" ? { borderColor: "#7c3aed" } : {}}>
             Hybrid Spatial Lag Model + Random Forest
           </div>
         )}
         {hasHybridError && (
-          <div
-            className={`blgf-ai-modeltab ${activeModelTab === "hybrid_err" ? "active" : ""}`}
-            onClick={() => setActiveModelTab("hybrid_err")}
-            style={{ color: "#f87171" }}
-          >
+          <div className={`blgf-ai-modeltab ${activeModelTab === "hybrid_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("hybrid_err")} style={{ color: "#f87171" }}>
             Hybrid Spatial Lag Model + Random Forest ✕
           </div>
         )}
+
+        {/* Hybrid SDM+XGB — Stage 1 (SDM) */}
+        {hasHybridSDM && (
+          <div className={`blgf-ai-modeltab ${activeModelTab === "hybrid_sdm" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("hybrid_sdm")}
+            style={activeModelTab === "hybrid_sdm" ? { borderColor: "#0f766e" } : {}}>
+            Spatial Durbin Model
+          </div>
+        )}
+        {hasHybridSDMError && (
+          <div className={`blgf-ai-modeltab ${activeModelTab === "hybrid_sdm_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("hybrid_sdm_err")} style={{ color: "#f87171" }}>
+            Spatial Durbin Model ✕
+          </div>
+        )}
+
+        {/* Hybrid SDM+XGB — Final */}
+        {hasHybridSDMXGB && (
+          <div className={`blgf-ai-modeltab ${activeModelTab === "hybrid_sdm_xgb" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("hybrid_sdm_xgb")}
+            style={activeModelTab === "hybrid_sdm_xgb" ? { borderColor: "#0f766e" } : {}}>
+            Hybrid Spatial Durbin Model + XGBoost
+          </div>
+        )}
+        {hasHybridSDMXGBError && (
+          <div className={`blgf-ai-modeltab ${activeModelTab === "hybrid_sdm_xgb_err" ? "active" : ""}`}
+            onClick={() => setActiveModelTab("hybrid_sdm_xgb_err")} style={{ color: "#f87171" }}>
+            Hybrid Spatial Durbin Model + XGBoost ✕
+          </div>
+        )}
+
       </div>
 
       {!activeModelTab && (
@@ -218,12 +243,17 @@ function ModelSection({
   if (!modelResult) return null;
 
   const niceName =
-    modelType === "lr"         ? "Linear Regression"
-    : modelType === "rf"       ? "Random Forest"
-    : modelType === "slm"      ? "Spatial Lag Model"
-    : modelType === "hybrid_slm" ? "Spatial Lag Model"
-    : modelType === "hybrid"   ? "Hybrid Spatial Lag Model + Random Forest"
-    : "XGBoost";
+    modelType === "lr"             ? "Linear Regression"
+    : modelType === "rf"           ? "Random Forest"
+    : modelType === "xgb"          ? "XGBoost"
+    : modelType === "slm"          ? "Spatial Lag Model"
+    : modelType === "sdm"          ? "Spatial Durbin Model"
+    : modelType === "gwr"          ? "Geographically Weighted Regression"
+    : modelType === "hybrid_slm"   ? "Spatial Lag Model"
+    : modelType === "hybrid"       ? "Hybrid Spatial Lag Model + Random Forest"
+    : modelType === "hybrid_sdm"   ? "Spatial Durbin Model"
+    : modelType === "hybrid_sdm_xgb" ? "Hybrid Spatial Durbin Model + XGBoost"
+    : modelType.toUpperCase();
 
   return (
     <div className="blgf-ai-result">
@@ -268,7 +298,10 @@ function ModelSection({
           <ImportanceSection modelType={modelType} result={modelResult} />
           {modelType === "lr" && <LRCoefficientsSection result={modelResult} />}
           {(modelType === "slm" || modelType === "hybrid_slm") && <SLMCoefficientsSection result={modelResult} />}
+          {(modelType === "sdm" || modelType === "hybrid_sdm") && <SDMCoefficientsSection result={modelResult} />}
+          {modelType === "gwr" && <GWRCoefficientsSection result={modelResult} />}
           {(modelType === "hybrid" || modelType === "hybrid_slm") && <HybridDiagnosticsSection result={modelResult} />}
+          {(modelType === "hybrid_sdm_xgb" || modelType === "hybrid_sdm") && <HybridSDMXGBDiagnosticsSection result={modelResult} />}
           <ModelCAMA result={modelResult} />
         </>
       )}
@@ -316,22 +349,50 @@ function MetricsSection({
         <table className="blgf-ai-table narrow">
           <tbody>
             {[
-              ["MSE", metrics.MSE ?? metrics.mse],
+              ["MSE",  metrics.MSE  ?? metrics.mse],
               ["RMSE", metrics.RMSE ?? metrics.rmse],
-              ["MAE", metrics.MAE ?? metrics.mae],
-              ["R²", metrics["R²"] ?? metrics.r2],
+              ["MAE",  metrics.MAE  ?? metrics.mae],
+              ["R²",   metrics["R²"] ?? metrics.r2],
               ...(modelType === "slm" ? [
-                ["Pseudo R²", metrics.pseudo_r2],
-                ["ρ (Spatial Lag)", metrics.rho],
+                ["Pseudo R²",            metrics.pseudo_r2],
+                ["ρ (Spatial Lag)",      metrics.rho],
                 ["Moran's I (residuals)", metrics.moran_i],
-                ["Moran's I p-value", metrics.moran_p],
+                ["Moran's I p-value",    metrics.moran_p],
+              ] : []),
+              ...(modelType === "sdm" ? [
+                ["Pseudo R²",             metrics.pseudo_r2],
+                ["ρ (Spatial Lag)",       metrics.rho],
+                ["Moran's I (residuals)", metrics.moran_i],
+                ["Moran's I p-value",     metrics.moran_p],
+              ] : []),
+              ...(modelType === "gwr" ? [
+                ["Mean local R²",         metrics.mean_r2],
+                ["AICc",                  metrics.aicc],
+                ["Effective df (tr S)",   metrics.eff_df],
+                ["Bandwidth (k-NN)",      metrics.bandwidth],
+                ["Moran's I (residuals)", metrics.moran_i],
+                ["Moran's I p-value",     metrics.moran_p],
               ] : []),
               ...(modelType === "hybrid" ? [
-                ["R² — SLM Stage", metrics.r2_slm],
-                ["RMSE — SLM Stage", metrics.rmse_slm],
-                ["Pseudo R² (SLM)", metrics.pseudo_r2],
-                ["ρ (Spatial Lag)", metrics.rho],
-                ["Moran's I — SLM residuals", metrics.moran_i_slm],
+                ["R² — SLM Stage",              metrics.r2_slm],
+                ["RMSE — SLM Stage",            metrics.rmse_slm],
+                ["Pseudo R² (SLM)",             metrics.pseudo_r2],
+                ["ρ (Spatial Lag)",             metrics.rho],
+                ["Moran's I — SLM residuals",   metrics.moran_i_slm],
+                ["Moran's I — Hybrid residuals", metrics.moran_i_hybrid],
+              ] : []),
+              ...(modelType === "hybrid_sdm" ? [
+                ["Pseudo R²",             metrics.pseudo_r2],
+                ["ρ (Spatial Lag)",       metrics.rho],
+                ["Moran's I — SDM residuals", metrics.moran_i_sdm],
+                ["Moran's I p-value",     metrics.moran_p_sdm],
+              ] : []),
+              ...(modelType === "hybrid_sdm_xgb" ? [
+                ["R² — SDM Stage",               metrics.r2_sdm],
+                ["RMSE — SDM Stage",             metrics.rmse_sdm],
+                ["Pseudo R² (SDM)",              metrics.pseudo_r2],
+                ["ρ (Spatial Lag)",              metrics.rho],
+                ["Moran's I — SDM residuals",    metrics.moran_i_sdm],
                 ["Moran's I — Hybrid residuals", metrics.moran_i_hybrid],
               ] : []),
             ]
@@ -380,8 +441,8 @@ function ModelDownloads({
     return url;
   };
 
-  const modelRawPath = dl.model_raw || extractFilePath(dl.model);
-  const shapefileRawPath = dl.shapefile_raw || extractFilePath(dl.shapefile);
+  const modelRawPath      = dl.model_raw      || extractFilePath(dl.model);
+  const shapefileRawPath  = dl.shapefile_raw  || extractFilePath(dl.shapefile);
 
   const calculatePredictionRange = () => {
     const interactiveData = result?.interactive_data || {};
@@ -440,8 +501,8 @@ function ModelDownloads({
 // --- LR Coefficients (Linear Regression only) ---
 
 function LRCoefficientsSection({ result }) {
-  const coeffs = result?.coefficients || [];
-  const tTests = result?.t_test?.coefficients || [];
+  const coeffs       = result?.coefficients || [];
+  const tTests       = result?.t_test?.coefficients || [];
   const residualTest = result?.t_test?.residuals || {};
 
   return (
@@ -503,15 +564,11 @@ function LRCoefficientsSection({ result }) {
             <tbody>
               <tr>
                 <td>t-Statistic</td>
-                <td className="align-right">
-                  {residualTest.t_stat.toFixed(6)}
-                </td>
+                <td className="align-right">{residualTest.t_stat.toFixed(6)}</td>
               </tr>
               <tr>
                 <td>p-Value</td>
-                <td className="align-right">
-                  {residualTest.p_value.toExponential(3)}
-                </td>
+                <td className="align-right">{residualTest.p_value.toExponential(3)}</td>
               </tr>
             </tbody>
           </table>
@@ -589,7 +646,6 @@ function SLMCoefficientsSection({ result }) {
                   </td>
                 </tr>
               ))}
-              {/* Rho row */}
               {rho !== undefined && (
                 <tr style={{ background: "rgba(245,158,11,0.08)", fontWeight: 600 }}>
                   <td>W*y (ρ)</td>
@@ -610,16 +666,167 @@ function SLMCoefficientsSection({ result }) {
   );
 }
 
+// --- SDM Coefficients & Impacts (SDM standalone + Hybrid SDM stage) ---
+
+function SDMCoefficientsSection({ result }) {
+  const coeffs  = result?.coefficients || [];
+  const rho     = result?.rho;
+  const moranI  = result?.moran_i_sdm ?? result?.moran_i;
+  const moranP  = result?.moran_p_sdm ?? result?.moran_p;
+  const metrics = result?.metrics || {};
+
+  return (
+    <div className="blgf-ai-card">
+      <div className="blgf-ai-subtitle2">Spatial Diagnostics — SDM</div>
+
+      {/* Badges */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        {rho !== undefined && rho !== null && (
+          <div style={{ background: "#fff7e6", border: "1px solid #f59e0b", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#92400e", fontWeight: 700, marginBottom: 2 }}>ρ (Spatial Lag)</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#b45309" }}>{rho.toFixed(4)}</div>
+          </div>
+        )}
+        {moranI !== undefined && moranI !== null && (
+          <div style={{ background: "#f0fdfa", border: "1px solid #0f766e", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#0f766e", fontWeight: 700, marginBottom: 2 }}>Moran's I (SDM residuals)</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0f766e" }}>{moranI.toFixed(4)}</div>
+            {moranP !== null && (
+              <div style={{ fontSize: 10, color: moranP < 0.05 ? "#dc2626" : "#6b7280" }}>
+                p = {moranP.toFixed(4)} {moranP < 0.05 ? "★ significant" : ""}
+              </div>
+            )}
+          </div>
+        )}
+        {metrics.pseudo_r2 !== undefined && (
+          <div style={{ background: "#f0fdf4", border: "1px solid #22c55e", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#166534", fontWeight: 700, marginBottom: 2 }}>Pseudo R²</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#15803d" }}>{metrics.pseudo_r2.toFixed(4)}</div>
+          </div>
+        )}
+      </div>
+
+      {/* β vs θ coefficient table */}
+      {coeffs.length > 0 && (
+        <>
+          <div className="blgf-ai-subtitle3">
+            Coefficients — β (own effect) &amp; θ (spillover) · ★ p &lt; 0.05
+          </div>
+          <table className="blgf-ai-table narrow">
+            <thead>
+              <tr>
+                <th>Variable</th>
+                <th className="align-right">β</th>
+                <th className="align-right">SE(β)</th>
+                <th className="align-right">p(β)</th>
+                <th className="align-right">θ</th>
+                <th className="align-right">SE(θ)</th>
+                <th className="align-right">p(θ)</th>
+                <th className="align-right">Spillover</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coeffs.map((row, i) => (
+                <tr key={i}>
+                  <td>{row.variable}</td>
+                  <td className="align-right" style={{ color: row.beta_sig ? "#2563eb" : undefined }}>
+                    {row.beta?.toFixed(4)}{row.beta_sig ? " ★" : ""}
+                  </td>
+                  <td className="align-right">{row.beta_se?.toFixed(4)}</td>
+                  <td className="align-right">{row.beta_p?.toExponential(3)}</td>
+                  <td className="align-right" style={{ color: row.theta_sig ? "#ea580c" : undefined }}>
+                    {row.theta?.toFixed(4)}{row.theta_sig ? " ★" : ""}
+                  </td>
+                  <td className="align-right">{row.theta_se?.toFixed(4)}</td>
+                  <td className="align-right">{row.theta_p?.toExponential(3)}</td>
+                  <td className="align-right" style={{
+                    color: row.spillover_type === "positive" ? "#16a34a"
+                         : row.spillover_type === "negative" ? "#dc2626"
+                         : "#94a3b8",
+                    fontWeight: 600,
+                  }}>
+                    {row.spillover_type?.toUpperCase() || "—"}
+                  </td>
+                </tr>
+              ))}
+              {rho !== undefined && (
+                <tr style={{ background: "rgba(245,158,11,0.08)", fontWeight: 600 }}>
+                  <td>W*y (ρ)</td>
+                  <td className="align-right">{rho.toFixed(4)}</td>
+                  <td className="align-right" colSpan={6} style={{ color: "#92400e", fontSize: 12 }}>
+                    Spatial lag of dependent variable
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          {/* LeSage-Pace Impacts */}
+          {coeffs.some(r => r.avg_direct !== undefined && r.avg_direct !== null) && (
+            <>
+              <div className="blgf-ai-subtitle3" style={{ marginTop: 16 }}>
+                LeSage-Pace Impacts Decomposition — S_k(W) = (I−ρW)⁻¹(β_k·I + θ_k·W)
+              </div>
+              <table className="blgf-ai-table narrow">
+                <thead>
+                  <tr>
+                    <th>Variable</th>
+                    <th className="align-right">Avg Direct</th>
+                    <th className="align-right">Avg Indirect</th>
+                    <th className="align-right">Avg Total</th>
+                    <th className="align-right">Spillover</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {coeffs.map((row, i) => (
+                    <tr key={i}>
+                      <td>{row.variable}</td>
+                      <td className="align-right" style={{ color: "#2563eb" }}>
+                        {row.avg_direct !== null ? row.avg_direct?.toFixed(4) : "N/A"}
+                      </td>
+                      <td className="align-right" style={{ color: "#ea580c" }}>
+                        {row.avg_indirect !== null ? row.avg_indirect?.toFixed(4) : "N/A"}
+                      </td>
+                      <td className="align-right" style={{ color: "#7c3aed" }}>
+                        {row.avg_total !== null ? row.avg_total?.toFixed(4) : "N/A"}
+                      </td>
+                      <td className="align-right" style={{
+                        color: row.spillover_type === "positive" ? "#16a34a"
+                             : row.spillover_type === "negative" ? "#dc2626"
+                             : "#94a3b8",
+                        fontWeight: 600,
+                      }}>
+                        {row.spillover_type?.toUpperCase() || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>
+                Direct = own effect after spatial feedback · Indirect = spillover to neighbors · Total = Direct + Indirect
+              </div>
+            </>
+          )}
+
+          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>
+            ★ = significant at p &lt; 0.05 · Weights: Queen contiguity (row-standardized)
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // --- Hybrid SLM+RF Diagnostics Section ---
 
 function HybridDiagnosticsSection({ result }) {
-  const rho        = result?.rho;
-  const moranISLM  = result?.moran_i_slm;
-  const moranPSLM  = result?.moran_p_slm;
-  const moranIHyb  = result?.moran_i_hybrid;
-  const moranPHyb  = result?.moran_p_hybrid;
-  const metrics    = result?.metrics || {};
-  const coeffs     = result?.slm_coefficients || [];
+  const rho       = result?.rho;
+  const moranISLM = result?.moran_i_slm;
+  const moranPSLM = result?.moran_p_slm;
+  const moranIHyb = result?.moran_i_hybrid;
+  const moranPHyb = result?.moran_p_hybrid;
+  const metrics   = result?.metrics || {};
+  const coeffs    = result?.slm_coefficients || [];
 
   return (
     <div className="blgf-ai-card">
@@ -714,6 +921,274 @@ function HybridDiagnosticsSection({ result }) {
   );
 }
 
+// --- Hybrid SDM+XGB Diagnostics Section ---
+
+function HybridSDMXGBDiagnosticsSection({ result }) {
+  const rho       = result?.rho;
+  const moranISDM = result?.moran_i_sdm;
+  const moranPSDM = result?.moran_p_sdm;
+  const moranIHyb = result?.moran_i_hybrid;
+  const moranPHyb = result?.moran_p_hybrid;
+  const metrics   = result?.metrics || {};
+  const coeffs    = result?.coefficients || [];
+
+  return (
+    <div className="blgf-ai-card">
+      <div className="blgf-ai-subtitle2">Spatial Diagnostics — SDM + XGBoost</div>
+
+      {/* Badges */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        {rho !== undefined && rho !== null && (
+          <div style={{ background: "#fff7e6", border: "1px solid #f59e0b", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#92400e", fontWeight: 700, marginBottom: 2 }}>ρ — Stage 1 SDM</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#b45309" }}>{rho.toFixed(4)}</div>
+          </div>
+        )}
+        {moranISDM !== undefined && moranISDM !== null && (
+          <div style={{ background: "#f0fdfa", border: "1px solid #0f766e", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#0f766e", fontWeight: 700, marginBottom: 2 }}>Moran's I — SDM residuals</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0f766e" }}>{moranISDM.toFixed(4)}</div>
+            {moranPSDM !== null && (
+              <div style={{ fontSize: 10, color: moranPSDM < 0.05 ? "#dc2626" : "#6b7280" }}>
+                p = {moranPSDM.toFixed(4)} {moranPSDM < 0.05 ? "★ significant" : ""}
+              </div>
+            )}
+          </div>
+        )}
+        {moranIHyb !== undefined && moranIHyb !== null && (
+          <div style={{ background: "#f0fdfa", border: "1px solid #0f766e", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#0f766e", fontWeight: 700, marginBottom: 2 }}>Moran's I — Hybrid residuals</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0f766e" }}>{moranIHyb.toFixed(4)}</div>
+            {moranPHyb !== null && (
+              <div style={{ fontSize: 10, color: moranPHyb < 0.05 ? "#dc2626" : "#16a34a" }}>
+                p = {moranPHyb.toFixed(4)} {moranPHyb < 0.05 ? "★ still significant" : "✓ not significant"}
+              </div>
+            )}
+          </div>
+        )}
+        {metrics.r2_sdm !== undefined && metrics.r2 !== undefined && (
+          <div style={{ background: "#f0fdf4", border: "1px solid #22c55e", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#166534", fontWeight: 700, marginBottom: 2 }}>R² improvement</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#15803d" }}>
+              +{((metrics.r2 - metrics.r2_sdm) * 100).toFixed(2)}%
+            </div>
+            <div style={{ fontSize: 10, color: "#6b7280" }}>Hybrid vs SDM alone</div>
+          </div>
+        )}
+      </div>
+
+      {/* SDM Stage 1 — β vs θ coefficients + impacts */}
+      {coeffs.length > 0 && (
+        <>
+          <div className="blgf-ai-subtitle3">Stage 1 — SDM Coefficients — β (own) &amp; θ (spillover) · ★ p &lt; 0.05</div>
+          <table className="blgf-ai-table narrow">
+            <thead>
+              <tr>
+                <th>Variable</th>
+                <th className="align-right">β</th>
+                <th className="align-right">SE(β)</th>
+                <th className="align-right">p(β)</th>
+                <th className="align-right">θ</th>
+                <th className="align-right">SE(θ)</th>
+                <th className="align-right">p(θ)</th>
+                <th className="align-right">Spillover</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coeffs.map((row, i) => (
+                <tr key={i}>
+                  <td>{row.variable}</td>
+                  <td className="align-right" style={{ color: row.beta_sig ? "#2563eb" : undefined }}>
+                    {row.beta?.toFixed(4)}{row.beta_sig ? " ★" : ""}
+                  </td>
+                  <td className="align-right">{row.beta_se?.toFixed(4)}</td>
+                  <td className="align-right">{row.beta_p?.toExponential(3)}</td>
+                  <td className="align-right" style={{ color: row.theta_sig ? "#ea580c" : undefined }}>
+                    {row.theta?.toFixed(4)}{row.theta_sig ? " ★" : ""}
+                  </td>
+                  <td className="align-right">{row.theta_se?.toFixed(4)}</td>
+                  <td className="align-right">{row.theta_p?.toExponential(3)}</td>
+                  <td className="align-right" style={{
+                    color: row.spillover_type === "positive" ? "#16a34a"
+                         : row.spillover_type === "negative" ? "#dc2626"
+                         : "#94a3b8",
+                    fontWeight: 600,
+                  }}>
+                    {row.spillover_type?.toUpperCase() || "—"}
+                  </td>
+                </tr>
+              ))}
+              {rho !== undefined && (
+                <tr style={{ background: "rgba(245,158,11,0.08)", fontWeight: 600 }}>
+                  <td>W*y (ρ)</td>
+                  <td className="align-right">{rho.toFixed(4)}</td>
+                  <td className="align-right" colSpan={6} style={{ color: "#92400e", fontSize: 12 }}>
+                    Spatial lag of dependent variable
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          {/* LeSage-Pace Impacts */}
+          {coeffs.some(r => r.avg_direct !== undefined && r.avg_direct !== null) && (
+            <>
+              <div className="blgf-ai-subtitle3" style={{ marginTop: 16 }}>
+                LeSage-Pace Impacts — S_k(W) = (I−ρW)⁻¹(β_k·I + θ_k·W)
+              </div>
+              <table className="blgf-ai-table narrow">
+                <thead>
+                  <tr>
+                    <th>Variable</th>
+                    <th className="align-right">Avg Direct</th>
+                    <th className="align-right">Avg Indirect</th>
+                    <th className="align-right">Avg Total</th>
+                    <th className="align-right">Spillover</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {coeffs.map((row, i) => (
+                    <tr key={i}>
+                      <td>{row.variable}</td>
+                      <td className="align-right" style={{ color: "#2563eb" }}>
+                        {row.avg_direct !== null ? row.avg_direct?.toFixed(4) : "N/A"}
+                      </td>
+                      <td className="align-right" style={{ color: "#ea580c" }}>
+                        {row.avg_indirect !== null ? row.avg_indirect?.toFixed(4) : "N/A"}
+                      </td>
+                      <td className="align-right" style={{ color: "#7c3aed" }}>
+                        {row.avg_total !== null ? row.avg_total?.toFixed(4) : "N/A"}
+                      </td>
+                      <td className="align-right" style={{
+                        color: row.spillover_type === "positive" ? "#16a34a"
+                             : row.spillover_type === "negative" ? "#dc2626"
+                             : "#94a3b8",
+                        fontWeight: 600,
+                      }}>
+                        {row.spillover_type?.toUpperCase() || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>
+                Direct = own effect after spatial feedback · Indirect = spillover to neighbors · Total = Direct + Indirect
+              </div>
+            </>
+          )}
+
+          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>
+            ★ = significant at p &lt; 0.05 · Stage 2 XGBoost feature importances shown above
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// --- GWR Local β Summary Section ---
+
+function GWRCoefficientsSection({ result }) {
+  const coeffs  = result?.coefficients || [];   // coeff_summary array from backend
+  const metrics = result?.metrics || {};
+  const moranI  = result?.moran_i;
+  const moranP  = result?.moran_p;
+  const bw      = result?.bandwidth ?? metrics.bandwidth;
+
+  return (
+    <div className="blgf-ai-card">
+      <div className="blgf-ai-subtitle2">GWR Spatial Diagnostics</div>
+
+      {/* Badges */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        {bw !== undefined && bw !== null && (
+          <div style={{ background: "#f5f3ff", border: "1px solid #7c3aed", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#5b21b6", fontWeight: 700, marginBottom: 2 }}>Bandwidth (k-NN)</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#7c3aed" }}>{Math.round(bw)}</div>
+            <div style={{ fontSize: 10, color: "#6b7280" }}>Adaptive bi-square · AICc</div>
+          </div>
+        )}
+        {metrics.mean_r2 !== undefined && (
+          <div style={{ background: "#f0fdf4", border: "1px solid #22c55e", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#166534", fontWeight: 700, marginBottom: 2 }}>Mean local R²</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#15803d" }}>{metrics.mean_r2.toFixed(4)}</div>
+          </div>
+        )}
+        {metrics.aicc !== undefined && (
+          <div style={{ background: "#eff6ff", border: "1px solid #3b82f6", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 700, marginBottom: 2 }}>AICc</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#1d4ed8" }}>{metrics.aicc.toFixed(2)}</div>
+          </div>
+        )}
+        {moranI !== undefined && moranI !== null && (
+          <div style={{ background: "#f5f3ff", border: "1px solid #7c3aed", borderRadius: 8, padding: "8px 14px" }}>
+            <div style={{ fontSize: 11, color: "#5b21b6", fontWeight: 700, marginBottom: 2 }}>Moran's I (residuals)</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#7c3aed" }}>{moranI.toFixed(4)}</div>
+            {moranP !== null && (
+              <div style={{ fontSize: 10, color: moranP < 0.05 ? "#dc2626" : "#16a34a" }}>
+                p = {moranP.toFixed(4)} {moranP < 0.05 ? "★ significant" : "✓ not significant"}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Local β surface summary table */}
+      {coeffs.length > 0 && (
+        <>
+          <div className="blgf-ai-subtitle3">
+            Local β Surface Summary — min / Q1 / mean / Q3 / max per predictor · % Sig = |t| ≥ 1.96
+          </div>
+          <table className="blgf-ai-table narrow">
+            <thead>
+              <tr>
+                <th>Variable</th>
+                <th className="align-right">Min</th>
+                <th className="align-right">Q1</th>
+                <th className="align-right">Mean</th>
+                <th className="align-right">Median</th>
+                <th className="align-right">Q3</th>
+                <th className="align-right">Max</th>
+                <th className="align-right">IQR</th>
+                <th className="align-right">% Sig.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coeffs.map((row, i) => {
+                const pctSig    = row.pct_sig ?? 0;
+                const sigColor  = pctSig >= 50 ? "#16a34a" : pctSig >= 25 ? "#ea580c" : "#94a3b8";
+                const iqrHigh   = row.beta_iqr > Math.abs(row.beta_mean) * 0.5;
+                return (
+                  <tr key={i} style={{ background: i % 2 === 0 ? "#f5f3ff22" : "transparent" }}>
+                    <td>{row.variable}</td>
+                    <td className="align-right" style={{ color: "#2563eb" }}>{row.beta_min?.toFixed(4)}</td>
+                    <td className="align-right">{row.beta_q1?.toFixed(4)}</td>
+                    <td className="align-right" style={{ fontWeight: 600 }}>{row.beta_mean?.toFixed(4)}</td>
+                    <td className="align-right">{row.beta_median?.toFixed(4)}</td>
+                    <td className="align-right">{row.beta_q3?.toFixed(4)}</td>
+                    <td className="align-right" style={{ color: "#ea580c" }}>{row.beta_max?.toFixed(4)}</td>
+                    <td className="align-right" style={{ color: iqrHigh ? "#dc2626" : "#374151", fontWeight: iqrHigh ? 700 : 400 }}>
+                      {row.beta_iqr?.toFixed(4)}
+                    </td>
+                    <td className="align-right" style={{ color: sigColor, fontWeight: 600 }}>
+                      {pctSig.toFixed(1)}%
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>
+            IQR = Q3 − Q1 · High IQR (red) = strong spatial non-stationarity for that predictor ·
+            % Sig. = share of spatial units where |t| ≥ 1.96 ·
+            Map local β alongside local t-values; grey out cells where |t| &lt; 1.96
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // --- Feature Importance ---
 
 function ImportanceSection({ modelType, result }) {
@@ -730,7 +1205,7 @@ function ImportanceSection({ modelType, result }) {
     );
 
   const features = imp.map((i) => i.feature);
-  const values = imp.map((i) => i.value);
+  const values   = imp.map((i) => i.value);
 
   return (
     <div className="blgf-ai-card">
@@ -791,11 +1266,11 @@ function ImportanceSection({ modelType, result }) {
 // --- Plots (Actual vs Predicted + Residual Distribution) ---
 
 function PlotsSection({ modelType, result }) {
-  const d = result?.interactive_data || {};
-  const y = d.y_test || [];
-  const preds = d.preds || [];
-  const bins = d.residual_bins || [];
-  const binCounts = d.residual_counts || [];
+  const d        = result?.interactive_data || {};
+  const y        = d.y_test || [];
+  const preds    = d.preds  || [];
+  const bins     = d.residual_bins   || [];
+  const binCounts= d.residual_counts || [];
 
   return (
     <>
@@ -822,14 +1297,8 @@ function PlotsSection({ modelType, result }) {
             ]}
             layout={{
               ...SCATTER_LAYOUT,
-              xaxis: {
-                ...SCATTER_LAYOUT.xaxis,
-                title: getAxisTitle("Actual Values"),
-              },
-              yaxis: {
-                ...SCATTER_LAYOUT.yaxis,
-                title: getAxisTitle("Predicted Values"),
-              },
+              xaxis: { ...SCATTER_LAYOUT.xaxis, title: getAxisTitle("Actual Values") },
+              yaxis: { ...SCATTER_LAYOUT.yaxis, title: getAxisTitle("Predicted Values") },
             }}
             config={PLOT_CONFIG}
             style={{ width: "100%" }}
@@ -852,14 +1321,8 @@ function PlotsSection({ modelType, result }) {
             ]}
             layout={{
               ...BAR_LAYOUT,
-              xaxis: {
-                ...BAR_LAYOUT.xaxis,
-                title: getAxisTitle("Residual"),
-              },
-              yaxis: {
-                ...BAR_LAYOUT.yaxis,
-                title: getAxisTitle("Frequency"),
-              },
+              xaxis: { ...BAR_LAYOUT.xaxis, title: getAxisTitle("Residual") },
+              yaxis: { ...BAR_LAYOUT.yaxis, title: getAxisTitle("Frequency") },
             }}
             config={PLOT_CONFIG}
             style={{ width: "100%" }}
@@ -880,9 +1343,7 @@ function VariableDistributions({ modelType, result }) {
     return (
       <div className="blgf-ai-card">
         <div className="blgf-ai-subtitle2">Variable Distributions</div>
-        <div className="blgf-ai-empty-text">
-          No distribution data available.
-        </div>
+        <div className="blgf-ai-empty-text">No distribution data available.</div>
       </div>
     );
 
@@ -934,14 +1395,8 @@ function VariableDistributions({ modelType, result }) {
                 ]}
                 layout={{
                   ...DISTRIBUTION_LAYOUT,
-                  xaxis: {
-                    ...DISTRIBUTION_LAYOUT.xaxis,
-                    title: getAxisTitle(v, "#f7c800"),
-                  },
-                  yaxis: {
-                    ...DISTRIBUTION_LAYOUT.yaxis,
-                    title: getAxisTitle("Frequency", "#f7c800"),
-                  },
+                  xaxis: { ...DISTRIBUTION_LAYOUT.xaxis, title: getAxisTitle(v, "#f7c800") },
+                  yaxis: { ...DISTRIBUTION_LAYOUT.yaxis, title: getAxisTitle("Frequency", "#f7c800") },
                 }}
                 config={PLOT_CONFIG}
                 style={{ width: "100%" }}
@@ -962,12 +1417,11 @@ function ModelCAMA({ result }) {
     return (
       <div className="blgf-ai-card">
         <div className="blgf-ai-subtitle2">Training Result Preview</div>
-        <div className="blgf-ai-empty-text">
-          No training data preview available.
-        </div>
+        <div className="blgf-ai-empty-text">No training data preview available.</div>
       </div>
     );
   const columns = Object.keys(rows[0]);
+  const displayName = (col) => /^pred_/i.test(col) ? "Prediction" : col;
   return (
     <div className="blgf-ai-card">
       <div className="blgf-ai-subtitle2">Training Result Preview</div>
@@ -976,7 +1430,7 @@ function ModelCAMA({ result }) {
           <thead>
             <tr>
               {columns.map((c) => (
-                <th key={c}>{c}</th>
+                <th key={c}>{displayName(c)}</th>
               ))}
             </tr>
           </thead>
